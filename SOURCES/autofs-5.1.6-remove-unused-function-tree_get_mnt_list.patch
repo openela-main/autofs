@@ -1,0 +1,366 @@
+autofs-5.1.6 - remove unused function tree_get_mnt_list()
+
+From: Ian Kent <raven@themaw.net>
+
+Remove the now unused function tree_get_mnt_list() and friends.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 
+ include/mounts.h |   17 ---
+ lib/mounts.c     |  299 -------------------------------------------------------
+ 3 files changed, 1 insertion(+), 316 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -130,6 +130,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix stale offset directories disable mount.
+ - use struct mnt_list to track mounted mounts.
+ - use struct mnt_list mounted list for expire.
++- remove unused function tree_get_mnt_list().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -83,20 +83,8 @@ struct mnt_list {
+ 	 * List operations ie. get_mnt_list.
+ 	 */
+ 	struct mnt_list *next;
+-
+-	/*
+-	 * Tree operations ie. tree_make_tree,
+-	 * tree_get_mnt_list etc.
+-	 */
+-	struct mnt_list *left;
+-	struct mnt_list *right;
+-	struct list_head self;
+-	struct list_head list;
+-	struct list_head entries;
+-	struct list_head sublist;
+ };
+ 
+-
+ struct nfs_mount_vers {
+ 	unsigned int major;
+ 	unsigned int minor;
+@@ -143,11 +131,6 @@ void mnts_set_mounted_mount(struct autof
+ int unlink_mount_tree(struct autofs_point *ap, const char *mp);
+ void free_mnt_list(struct mnt_list *list);
+ int is_mounted(const char *mp, unsigned int type);
+-void tree_free_mnt_tree(struct mnt_list *tree);
+-struct mnt_list *tree_make_mnt_tree(const char *path);
+-int tree_get_mnt_list(struct mnt_list *mnts, struct list_head *list, const char *path, int include);
+-int tree_get_mnt_sublist(struct mnt_list *mnts, struct list_head *list, const char *path, int include);
+-int tree_find_mnt_ents(struct mnt_list *mnts, struct list_head *list, const char *path);
+ void set_tsd_user_vars(unsigned int, uid_t, gid_t);
+ const char *mount_type_str(unsigned int);
+ void set_exp_timeout(struct autofs_point *ap, struct map_source *source, time_t timeout);
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1685,305 +1685,6 @@ int is_mounted(const char *mp, unsigned
+ 		return table_is_mounted(mp, type);
+ }
+ 
+-/*
+- * Since we have to look at the entire mount tree for direct
+- * mounts (all mounts under "/") and we may have a large number
+- * of entries to traverse again and again we need to
+- * use a more efficient method than the routines above.
+- *
+- * Thre tree_... routines allow us to read the mount tree
+- * once and pass it to subsequent functions for use. Since
+- * it's a tree structure searching should be a low overhead
+- * operation.
+- */
+-void tree_free_mnt_tree(struct mnt_list *tree)
+-{
+-	struct list_head *head, *p;
+-
+-	if (!tree)
+-		return;
+-
+-	tree_free_mnt_tree(tree->left);
+-	tree_free_mnt_tree(tree->right);
+-
+-	head = &tree->self;
+-	p = head->next;
+-	while (p != head) {
+-		struct mnt_list *this;
+-
+-		this = list_entry(p, struct mnt_list, self);
+-
+-		p = p->next;
+-
+-		list_del(&this->self);
+-
+-		free(this->mp);
+-
+-		free(this);
+-	}
+-
+-	free(tree->mp);
+-	free(tree);
+-}
+-
+-/*
+- * Make tree of system mounts in /proc/mounts.
+- */
+-struct mnt_list *tree_make_mnt_tree(const char *path)
+-{
+-	FILE *tab;
+-	struct mntent mnt_wrk;
+-	char buf[PATH_MAX * 3];
+-	struct mntent *mnt;
+-	struct mnt_list *ent, *mptr;
+-	struct mnt_list *tree = NULL;
+-	size_t plen;
+-	int eq;
+-
+-	tab = open_fopen_r(_PROC_MOUNTS);
+-	if (!tab) {
+-		char *estr = strerror_r(errno, buf, PATH_MAX - 1);
+-		logerr("fopen: %s", estr);
+-		return NULL;
+-	}
+-
+-	plen = strlen(path);
+-
+-	while ((mnt = local_getmntent_r(tab, &mnt_wrk, buf, PATH_MAX * 3))) {
+-		size_t len = strlen(mnt->mnt_dir);
+-
+-		/* Not matching path */
+-		if (strncmp(mnt->mnt_dir, path, plen))
+-			continue;
+-
+-		/* Not a subdirectory of requested path */
+-		if (plen > 1 && len > plen && mnt->mnt_dir[plen] != '/')
+-			continue;
+-
+-		ent = malloc(sizeof(*ent));
+-		if (!ent) {
+-			endmntent(tab);
+-			tree_free_mnt_tree(tree);
+-			return NULL;
+-		}
+-		memset(ent, 0, sizeof(*ent));
+-
+-		INIT_LIST_HEAD(&ent->self);
+-		INIT_LIST_HEAD(&ent->list);
+-		INIT_LIST_HEAD(&ent->entries);
+-		INIT_LIST_HEAD(&ent->sublist);
+-
+-		ent->mp = malloc(len + 1);
+-		if (!ent->mp) {
+-			endmntent(tab);
+-			free(ent);
+-			tree_free_mnt_tree(tree);
+-			return NULL;
+-		}
+-		strcpy(ent->mp, mnt->mnt_dir);
+-
+-		if (!strcmp(mnt->mnt_type, "autofs"))
+-			ent->flags |= MNTS_AUTOFS;
+-
+-		if (ent->flags & MNTS_AUTOFS) {
+-			if (strstr(mnt->mnt_opts, "indirect"))
+-				ent->flags |= MNTS_INDIRECT;
+-			else if (strstr(mnt->mnt_opts, "direct"))
+-				ent->flags |= MNTS_DIRECT;
+-			else if (strstr(mnt->mnt_opts, "offset"))
+-				ent->flags |= MNTS_OFFSET;
+-		}
+-
+-		mptr = tree;
+-		while (mptr) {
+-			int elen = strlen(ent->mp);
+-			int mlen = strlen(mptr->mp);
+-
+-			if (elen < mlen) {
+-				if (mptr->left) {
+-					mptr = mptr->left;
+-					continue;
+-				} else {
+-					mptr->left = ent;
+-					break;
+-				}
+-			} else if (elen > mlen) {
+-				if (mptr->right) {
+-					mptr = mptr->right;
+-					continue;
+-				} else {
+-					mptr->right = ent;
+-					break;
+-				}
+-			}
+-
+-			eq = strcmp(ent->mp, mptr->mp);
+-			if (eq < 0) {
+-				if (mptr->left)
+-					mptr = mptr->left;
+-				else {
+-					mptr->left = ent;
+-					break;
+-				}
+-			} else if (eq > 0) {
+-				if (mptr->right)
+-					mptr = mptr->right;
+-				else {
+-					mptr->right = ent;
+-					break;
+-				}
+-			} else {
+-				list_add_tail(&ent->self, &mptr->self);
+-				break;
+-			}
+-		}
+-
+-		if (!tree)
+-			tree = ent;
+-	}
+-	fclose(tab);
+-
+-	return tree;
+-}
+-
+-/*
+- * Get list of mounts under "path" in longest->shortest order
+- */
+-int tree_get_mnt_list(struct mnt_list *mnts, struct list_head *list, const char *path, int include)
+-{
+-	size_t mlen, plen;
+-
+-	if (!mnts)
+-		return 0;
+-
+-	plen = strlen(path);
+-	mlen = strlen(mnts->mp);
+-	if (mlen < plen)
+-		return tree_get_mnt_list(mnts->right, list, path, include);
+-	else {
+-		struct list_head *self, *p;
+-
+-		tree_get_mnt_list(mnts->left, list, path, include);
+-
+-		if ((!include && mlen <= plen) ||
+-				strncmp(mnts->mp, path, plen))
+-			goto skip;
+-
+-		if (plen > 1 && mlen > plen && mnts->mp[plen] != '/')
+-			goto skip;
+-
+-		INIT_LIST_HEAD(&mnts->list);
+-		list_add(&mnts->list, list);
+-
+-		self = &mnts->self;
+-		list_for_each(p, self) {
+-			struct mnt_list *this;
+-
+-			this = list_entry(p, struct mnt_list, self);
+-			INIT_LIST_HEAD(&this->list);
+-			list_add(&this->list, list);
+-		}
+-skip:
+-		tree_get_mnt_list(mnts->right, list, path, include);
+-	}
+-
+-	if (list_empty(list))
+-		return 0;
+-
+-	return 1;
+-}
+-
+-/*
+- * Get list of mounts under "path" in longest->shortest order
+- */
+-int tree_get_mnt_sublist(struct mnt_list *mnts, struct list_head *list, const char *path, int include)
+-{
+-	size_t mlen, plen;
+-
+-	if (!mnts)
+-		return 0;
+-
+-	plen = strlen(path);
+-	mlen = strlen(mnts->mp);
+-	if (mlen < plen)
+-		return tree_get_mnt_sublist(mnts->right, list, path, include);
+-	else {
+-		struct list_head *self, *p;
+-
+-		tree_get_mnt_sublist(mnts->left, list, path, include);
+-
+-		if ((!include && mlen <= plen) ||
+-				strncmp(mnts->mp, path, plen))
+-			goto skip;
+-
+-		if (plen > 1 && mlen > plen && mnts->mp[plen] != '/')
+-			goto skip;
+-
+-		INIT_LIST_HEAD(&mnts->sublist);
+-		list_add(&mnts->sublist, list);
+-
+-		self = &mnts->self;
+-		list_for_each(p, self) {
+-			struct mnt_list *this;
+-
+-			this = list_entry(p, struct mnt_list, self);
+-			INIT_LIST_HEAD(&this->sublist);
+-			list_add(&this->sublist, list);
+-		}
+-skip:
+-		tree_get_mnt_sublist(mnts->right, list, path, include);
+-	}
+-
+-	if (list_empty(list))
+-		return 0;
+-
+-	return 1;
+-}
+-
+-int tree_find_mnt_ents(struct mnt_list *mnts, struct list_head *list, const char *path)
+-{
+-	int mlen, plen;
+-
+-	if (!mnts)
+-		return 0;
+-
+-	plen = strlen(path);
+-	mlen = strlen(mnts->mp);
+-	if (mlen < plen)
+-		return tree_find_mnt_ents(mnts->right, list, path);
+-	else if (mlen > plen)
+-		return tree_find_mnt_ents(mnts->left, list, path);
+-	else {
+-		struct list_head *self, *p;
+-
+-		tree_find_mnt_ents(mnts->left, list, path);
+-
+-		if (!strcmp(mnts->mp, path)) {
+-			INIT_LIST_HEAD(&mnts->entries);
+-			list_add(&mnts->entries, list);
+-		}
+-
+-		self = &mnts->self;
+-		list_for_each(p, self) {
+-			struct mnt_list *this;
+-
+-			this = list_entry(p, struct mnt_list, self);
+-
+-			if (!strcmp(this->mp, path)) {
+-				INIT_LIST_HEAD(&this->entries);
+-				list_add(&this->entries, list);
+-			}
+-		}
+-
+-		tree_find_mnt_ents(mnts->right, list, path);
+-
+-		if (!list_empty(list))
+-			return 1;
+-	}
+-
+-	return 0;
+-}
+-
+ void set_tsd_user_vars(unsigned int logopt, uid_t uid, gid_t gid)
+ {
+ 	struct thread_stdenv_vars *tsv;

@@ -1,0 +1,38 @@
+autofs-5.1.7 - add length check in umount_subtree_mounts()
+
+From: Ian Kent <raven@themaw.net>
+
+Coverity: fixed_size_dest: You might overrun the 4097-character
+	  fixed-size string "key" by copying "me->key" without
+	  checking the length.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    5 +++++
+ 2 files changed, 6 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -55,6 +55,7 @@
+ - fix possible memory leak in master_parse().
+ - fix possible memory leak in mnts_add_amdmount().
+ - fix double unlock in parse_mount().
++- add length check in umount_subtree_mounts().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -562,6 +562,11 @@ static int umount_subtree_mounts(struct
+ 			left++;
+ 		}
+ 
++		if (me->len > PATH_MAX) {
++			crit(ap->logopt, "me->key too long for buffer");
++			return 1;
++		}
++
+ 		strcpy(key, me->key);
+ 
+ 		cache_unlock(mc);

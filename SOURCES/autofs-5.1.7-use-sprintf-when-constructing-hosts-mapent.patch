@@ -1,0 +1,72 @@
+autofs-5.1.7 - use snprintf() when constructing hosts mapent
+
+From: Ian Kent <raven@themaw.net>
+
+Using multiple strcpy() and strcat() functions when constructing the
+hosts map offset for each export is much slower than using a single
+sprintf() for each.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ modules/lookup_hosts.c |   26 +++++++++++++-------------
+ 2 files changed, 14 insertions(+), 13 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -2,6 +2,7 @@
+ - add xdr_exports().
+ - remove mount.x and rpcgen dependencies.
+ - dont use realloc in host exports list processing.
++- use sprintf() when constructing hosts mapent.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/lookup_hosts.c
++++ autofs-5.1.4/modules/lookup_hosts.c
+@@ -87,10 +87,12 @@ int lookup_read_master(struct master *ma
+ static char *get_exports(struct autofs_point *ap, const char *host)
+ {
+ 	char buf[MAX_ERR_BUF];
++	char entry[PATH_MAX + 1];
+ 	char *mapent;
+ 	struct exportinfo *exp, *this;
+ 	size_t hostlen = strlen(host);
+ 	size_t mapent_len;
++	int len, pos;
+ 
+ 	debug(ap->logopt, MODPREFIX "fetchng export list for %s", host);
+ 
+@@ -114,21 +116,19 @@ static char *get_exports(struct autofs_p
+ 	}
+ 	*mapent = 0;
+ 
++	pos = 0;
+ 	this = exp;
+-	while (this) {
+-		if (!*mapent)
+-			strcpy(mapent, "\"");
+-		else
+-			strcat(mapent, " \"");
+-		strcat(mapent, this->dir);
+-		strcat(mapent, "\"");
+-
+-		strcat(mapent, " \"");
+-		strcat(mapent, host);
+-		strcat(mapent, ":");
+-		strcat(mapent, this->dir);
+-		strcat(mapent, "\"");
++	if (this) {
++		len = sprintf(mapent, "\"%s\" \"%s:%s\"",
++				this->dir, host, this->dir);
++		pos += len;
++		this = this->next;
++	}
+ 
++	while (this) {
++		len = sprintf(mapent + pos, " \"%s\" \"%s:%s\"",
++				this->dir, host, this->dir);
++		pos += len;
+ 		this = this->next;
+ 	}
+ 	rpc_exports_free(exp);

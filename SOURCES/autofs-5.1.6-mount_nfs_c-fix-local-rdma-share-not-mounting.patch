@@ -1,0 +1,49 @@
+autofs-5.1.6 - mount_nfs.c fix local rdma share not mounting
+
+From: Achilles Gaikwad <agaikwad@redhat.com>
+
+When using the same system as nfs-server and nfs-client, and
+using `nobind` option for autofs we would fall to the code where
+we let `mount.nfs(8)` to handle the mount. However, when the
+nfs-server and the nfs-client is the same system we end up calling
+`rpc_ping` which gives negative return code. Due to this we fall to
+the label next: and never attempt a mount of nfs share.
+This patch fixes this BUG by not probing rpc_ping if we're
+using rdma.
+
+Signed-off-by: Achilles Gaikwad <agaikwad@redhat.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/mount_nfs.c |    9 +++++++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -81,6 +81,7 @@ xx/xx/2018 autofs-5.1.5
+ - initialize struct addrinfo for getaddrinfo() calls.
+ - fix quoted string length calc in expandsunent().
+ - fix autofs mount options construction.
++- mount_nfs.c fix local rdma share not mounting.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/modules/mount_nfs.c
++++ autofs-5.1.4/modules/mount_nfs.c
+@@ -375,9 +375,14 @@ dont_probe:
+ 		 */
+ 		if (this->proximity == PROXIMITY_LOCAL) {
+ 			char *host = this->name ? this->name : "localhost";
+-			int ret;
++			int ret = 1;
+ 
+-			ret = rpc_ping(host, port, vers, 2, 0, RPC_CLOSE_DEFAULT);
++			/* If we're using RDMA, rpc_ping will fail when
++			 * nfs-server is local. Therefore, don't probe
++			 * when we're using RDMA.
++			 */
++			if(!rdma)
++				ret = rpc_ping(host, port, vers, 2, 0, RPC_CLOSE_DEFAULT);
+ 			if (ret <= 0)
+ 				goto next;
+ 		}

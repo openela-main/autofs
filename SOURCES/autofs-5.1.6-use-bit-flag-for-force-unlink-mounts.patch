@@ -1,0 +1,45 @@
+autofs-5.1.6 - use bit flag for force unlink mounts
+
+From: Ian Kent <raven@themaw.net>
+
+Change global varaiable do_force_unlink to be a bit flag.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/automount.c  |    2 +-
+ include/automount.h |    2 ++
+ 3 files changed, 4 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -86,6 +86,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix direct mount unlink_mount_tree() path.
+ - fix unlink mounts umount order.
+ - fix incorrect logical compare in unlink_mount_tree().
++- use bit flag for force unlink mounts.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -2337,7 +2337,7 @@ int main(int argc, char *argv[])
+ 			break;
+ 
+ 		case 'F':
+-			do_force_unlink = 1;
++			do_force_unlink = UNLINK_AND_CONT;
+ 			break;
+ 
+ 		case '?':
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -590,6 +590,8 @@ struct autofs_point {
+ 	struct list_head submounts;	/* List of child submounts */
+ };
+ 
++#define UNLINK_AND_CONT		0x01
++
+ /* Foreably unlink existing mounts at startup. */
+ extern int do_force_unlink;
+ 

@@ -1,0 +1,34 @@
+autofs-5.1.5 - fix missing initialization of autofs_point flags
+
+From: Ian Kent <raven@themaw.net>
+
+When adding the "use_ignore_mount_option" configuration option I added
+a "use without initialization" for ap->flags.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/master.c |    2 ++
+ 2 files changed, 3 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -75,6 +75,7 @@ xx/xx/2018 autofs-5.1.5
+ - use local_getmntent_r() for unlink_mount_tree().
+ - use local getmntent_r() in get_mnt_list().
+ - use local getmntent_r() in tree_make_mnt_list().
++- fix missing initialization of autofs_point flags.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -101,6 +101,8 @@ int master_add_autofs_point(struct maste
+ 		ap->negative_timeout = global_negative_timeout;
+ 	ap->exp_timeout = defaults_get_timeout();
+ 	ap->exp_runfreq = 0;
++	ap->flags = 0;
++
+ 	if (defaults_get_use_ignore_mount_option())
+ 		ap->flags = MOUNT_FLAG_IGNORE;
+ 	if (ghost)

@@ -1,0 +1,101 @@
+autofs-5.1.7 - simplify cache_get_parent()
+
+From: Ian Kent <raven@themaw.net>
+
+Eliminate the list traversal from get_parent() and rename it to
+get_offset_parent() to better describe it's usage.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG   |    1 +
+ lib/cache.c |   46 ++++++++++++++++++++++++++++------------------
+ 2 files changed, 29 insertions(+), 18 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -6,6 +6,7 @@
+ - fix mnts_remove_amdmount() uses wrong list.
+ - eliminate cache_lookup_offset() usage.
+ - fix is mounted check on non existent path.
++- simplify cache_get_parent().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/cache.c
++++ autofs-5.1.4/lib/cache.c
+@@ -797,47 +797,57 @@ void cache_update_negative(struct mapent
+ }
+ 
+ 
+-static struct mapent *get_parent(const char *key, struct list_head *head, struct list_head **pos)
++static struct mapent *get_offset_parent(struct mapent_cache *mc,
++					const char *key)
+ {
+-	struct list_head *next;
+-	struct mapent *this, *last;
+-	int eq;
++	struct mapent *me;
++	char *parent, *tail;
++	int key_len;
+ 
+-	last = NULL;
+-	next = *pos ? (*pos)->next : head->next;
++	key_len = strlen(key);
+ 
+-	list_for_each(next, head) {
+-		this = list_entry(next, struct mapent, multi_list);
++	/* Check if this is the root offset */
++	if (key[key_len - 1] == '/')
++		return NULL;
+ 
+-		if (!strcmp(this->key, key))
++	parent = strdup(key);
++	tail = &parent[key_len - 1];
++
++	while (*tail) {
++		while (*tail != '/')
++			tail--;
++
++		*tail = 0;
++
++		tail--;
++		if (tail == parent)
+ 			break;
+ 
+-		eq = strncmp(this->key, key, strlen(this->key));
+-		if (eq == 0) {
+-			*pos = next;
+-			last = this;
+-			continue;
++		me = cache_lookup_distinct(mc, parent);
++		if (me) {
++			free(parent);
++			return me;
+ 		}
+ 	}
++	free(parent);
+ 
+-	return last;
++	return NULL;
+ }
+ 
+ int cache_set_parents(struct mapent *mm)
+ {
+-	struct list_head *multi_head, *p, *pos;
++	struct list_head *multi_head, *p;
+ 	struct mapent *this;
+ 
+ 	if (!mm->multi)
+ 		return 0;
+ 
+-	pos = NULL;
+ 	multi_head = &mm->multi->multi_list;
+ 
+ 	list_for_each(p, multi_head) {
+ 		struct mapent *parent;
+ 		this = list_entry(p, struct mapent, multi_list);
+-		parent = get_parent(this->key, multi_head, &pos);
++		parent = get_offset_parent(mm->mc, this->key);
+ 		if (parent)
+ 			this->parent = parent;
+ 		else

@@ -1,0 +1,78 @@
+autofs-5.1.6 - use a valid timeout in lookup_prune_one_cache()
+
+From: Ian Kent <raven@themaw.net>
+
+For a very long time the map entry cache has been allowed to grow
+without pruning old entries until a map read is needed and there's
+been a constant struggle to set the map stale only when really needed
+so that in use entries aren't pruned.
+
+But somewhere along the line that's become broken and the sss error
+handling updates don't work properly because of this (or rather don't
+work well).
+
+Add a positive map entry cache timeout so that recently seen map
+entries don't get removed in the map read following the lookup that
+added them when the map isn't actually read such as with nobrowse
+indirect mounts.
+
+The valid timeout probably should become configurable at some point
+too.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/lookup.c     |   15 +++++++++++++++
+ include/automount.h |    1 +
+ 3 files changed, 17 insertions(+)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 309def2..3608345 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -108,6 +108,7 @@ xx/xx/2018 autofs-5.1.5
+ - update sss timeout documentation.
+ - refactor sss getautomntbyname().
+ - improve sss getautomntbyname() error handling.
++- use a valid timeout in lookup_prune_one_cache().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/daemon/lookup.c b/daemon/lookup.c
+index 2b9c7e8..8bf1335 100644
+--- a/daemon/lookup.c
++++ b/daemon/lookup.c
+@@ -1354,6 +1354,21 @@ void lookup_prune_one_cache(struct autofs_point *ap, struct mapent_cache *mc, ti
+ 			continue;
+ 		}
+ 
++		if (ap->type == LKP_INDIRECT) {
++			/* If the map hasn't been read (nobrowse
++			 * indirect mounts) then keep cached entries
++			 * for POSITIVE_TIMEOUT.
++			 */
++			if (!(ap->flags & (MOUNT_FLAG_GHOST |
++					   MOUNT_FLAG_AMD_CACHE_ALL))) {
++				time_t until = me->age + POSITIVE_TIMEOUT;
++				if ((long) age - (long) until < 0) {
++					me = cache_enumerate(mc, me);
++					continue;
++				}
++			}
++		}
++
+ 		key = strdup(me->key);
+ 		me = cache_enumerate(mc, me);
+ 		/* Don't consider any entries with a wildcard */
+diff --git a/include/automount.h b/include/automount.h
+index 49c9ff9..bb264a1 100644
+--- a/include/automount.h
++++ b/include/automount.h
+@@ -139,6 +139,7 @@ struct autofs_point;
+ 
+ #define NULL_MAP_HASHSIZE	64
+ #define NEGATIVE_TIMEOUT	10
++#define POSITIVE_TIMEOUT	120
+ #define UMOUNT_RETRIES		8
+ #define EXPIRE_RETRIES		3
+ 

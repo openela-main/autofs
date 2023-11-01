@@ -1,0 +1,57 @@
+autofs-5.1.6 - fix stale offset directories disable mount
+
+From: Ian Kent <raven@themaw.net>
+
+When starting autofs when there are active mounts due to in use
+mounts from a previous shutdown, and a mount entry has offsets
+that are within an autofs mount, the mount point directories are
+incorrectly marked as not created by us when re-connecting to the
+mount so they are not removed at expire.
+
+Since the base autofs mount directory needs to be empty for mounts
+to be triggered these directories disable automounting for the mount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |   12 ++++++++++--
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -127,6 +127,7 @@ xx/xx/2018 autofs-5.1.5
+ - make umount_autofs() static.
+ - remove force parameter from umount_all().
+ - fix remount expire.
++- fix stale offset directories disable mount.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2182,15 +2182,23 @@ int try_remount(struct autofs_point *ap,
+ 	 * number for the mount but we can't know if we created
+ 	 * it or not. However, if this is an indirect mount with
+ 	 * the nobrowse option we need to remove the mount point
+-	 * directory at umount anyway.
++	 * directory at umount anyway. Also, if this is an offset
++	 * mount that's not within a real mount then we know we
++	 * created it so we must remove it on expire for the mount
++	 * to function.
+ 	 */
+ 	if (type == t_indirect) {
+ 		if (ap->flags & MOUNT_FLAG_GHOST)
+ 			ap->flags &= ~MOUNT_FLAG_DIR_CREATED;
+ 		else
+ 			ap->flags |= MOUNT_FLAG_DIR_CREATED;
+-	} else
++	} else {
+ 		me->flags &= ~MOUNT_FLAG_DIR_CREATED;
++		if (type == t_offset) {
++			if (!is_mounted(me->parent->key, MNTS_REAL))
++				me->flags |= MOUNT_FLAG_DIR_CREATED;
++		}
++	}
+ 
+ 	/*
+ 	 * Either we opened the mount or we're re-reading the map.

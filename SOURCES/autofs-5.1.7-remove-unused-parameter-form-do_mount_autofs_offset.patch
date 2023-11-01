@@ -1,0 +1,62 @@
+autofs-5.1.7 - remove unused parameter form do_mount_autofs_offset()
+
+From: Ian Kent <raven@themaw.net>
+
+The offset parameter of do_mount_autofs_offset() isn't used.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |   10 ++++------
+ 2 files changed, 5 insertions(+), 6 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -9,6 +9,7 @@
+ - simplify cache_get_parent().
+ - set offset parent in update_offset_entry().
+ - remove redundant variables from mount_autofs_offset().
++- remove unused parameter form do_mount_autofs_offset().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2466,9 +2466,7 @@ out:
+ }
+ 
+ static int do_mount_autofs_offset(struct autofs_point *ap,
+-				  struct mapent *oe, const char *root,
+-				  char *offset)
+-
++				  struct mapent *oe, const char *root)
+ {
+ 	int mounted = 0;
+ 	int ret;
+@@ -2523,7 +2521,7 @@ int mount_multi_triggers(struct autofs_p
+ 		if (!oe || !oe->mapent)
+ 			goto cont;
+ 
+-		mounted += do_mount_autofs_offset(ap, oe, root, offset);
++		mounted += do_mount_autofs_offset(ap, oe, root);
+ 
+ 		/*
+ 		 * If re-constructing a multi-mount it's necessary to walk
+@@ -2660,7 +2658,7 @@ int umount_multi_triggers(struct autofs_
+ 			 */
+ 			ret = rmdir_path_offset(ap, oe);
+ 			if (ret == -1 && !stat(oe->key, &st)) {
+-				ret = do_mount_autofs_offset(ap, oe, root, offset);
++				ret = do_mount_autofs_offset(ap, oe, root);
+ 				if (ret)
+ 					left++;
+ 				/* But we did origianlly create this */
+@@ -2841,7 +2839,7 @@ int clean_stale_multi_triggers(struct au
+ 			 */
+ 			ret = rmdir_path_offset(ap, oe);
+ 			if (ret == -1 && !stat(oe->key, &st)) {
+-				ret = do_mount_autofs_offset(ap, oe, root, offset);
++				ret = do_mount_autofs_offset(ap, oe, root);
+ 				if (ret) {
+ 					left++;
+ 					/* But we did origianlly create this */

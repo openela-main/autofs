@@ -1,0 +1,42 @@
+autofs-5.1.7 - simplify mount_subtree() mount check
+
+From: Ian Kent <raven@themaw.net>
+
+The check of the return from sun_mount() following the possible mount
+of the root offset in mount_subtree() can be simpler.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |   10 +---------
+ 2 files changed, 2 insertions(+), 9 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -12,6 +12,7 @@
+ - remove unused parameter form do_mount_autofs_offset().
+ - refactor umount_multi_triggers().
+ - eliminate clean_stale_multi_triggers().
++- simplify mount_subtree() mount check.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -1205,15 +1205,7 @@ static int mount_subtree(struct autofs_p
+ 				free(ro_loc);
+ 		}
+ 
+-		if (ro && rv == 0) {
+-			ret = mount_multi_triggers(ap, me, mm_root, start, mm_base);
+-			if (ret == -1) {
+-				error(ap->logopt, MODPREFIX
+-					 "failed to mount offset triggers");
+-				cleanup_multi_triggers(ap, me, mm_root, start, mm_base);
+-				return 1;
+-			}
+-		} else if (rv <= 0) {
++		if ((ro && rv == 0) || rv <= 0) {
+ 			ret = mount_multi_triggers(ap, me, mm_root, start, mm_base);
+ 			if (ret == -1) {
+ 				error(ap->logopt, MODPREFIX

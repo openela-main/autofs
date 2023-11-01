@@ -1,0 +1,119 @@
+autofs-5.1.6 - use master_list_empty() for list empty check
+
+From: Ian Kent <raven@themaw.net>
+
+For consistency use the master_list_empty() function for list empty
+checks everywhere.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ daemon/master.c    |   24 +++++++++++++++++-------
+ include/master.h   |    1 +
+ 4 files changed, 20 insertions(+), 8 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -134,6 +134,7 @@ xx/xx/2018 autofs-5.1.5
+ - only add expre alarm for active mounts.
+ - move submount check into conditional_alarm_add().
+ - move lib/master.c to daemon/master.c.
++- use master_list_empty() for list empty check.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1596,7 +1596,7 @@ static void *statemachine(void *arg)
+ 		case SIGUSR2:
+ 			master_mutex_lock();
+ 			if (list_empty(&master_list->completed)) {
+-				if (list_empty(&master_list->mounts)) {
++				if (__master_list_empty(master_list)) {
+ 					master_mutex_unlock();
+ 					return NULL;
+ 				}
+--- autofs-5.1.4.orig/daemon/master.c
++++ autofs-5.1.4/daemon/master.c
+@@ -1110,7 +1110,7 @@ int master_read_master(struct master *ma
+ 			master_mount_mounts(master, age);
+ 	}
+ 
+-	if (list_empty(&master->mounts))
++	if (__master_list_empty(master))
+ 		warn(logopt, "no mounts in table");
+ 
+ 	master_mutex_unlock();
+@@ -1625,7 +1625,7 @@ int dump_map(struct master *master, cons
+ {
+ 	struct list_head *p, *head;
+ 
+-	if (list_empty(&master->mounts)) {
++	if (__master_list_empty(master)) {
+ 		printf("no master map entries found\n");
+ 		return 1;
+ 	}
+@@ -1743,7 +1743,7 @@ int master_show_mounts(struct master *ma
+ 		printf("global options %s be appended to map entries\n", append);
+ 	}
+ 
+-	if (list_empty(&master->mounts)) {
++	if (__master_list_empty(master)) {
+ 		printf("no master map entries found\n\n");
+ 		return 1;
+ 	}
+@@ -1831,13 +1831,22 @@ int master_show_mounts(struct master *ma
+ 	return 1;
+ }
+ 
+-int master_list_empty(struct master *master)
++int __master_list_empty(struct master *master)
+ {
+ 	int res = 0;
+ 
+-	master_mutex_lock();
+ 	if (list_empty(&master->mounts))
+ 		res = 1;
++
++	return res;
++}
++
++int master_list_empty(struct master *master)
++{
++	int res;
++
++	master_mutex_lock();
++	res = __master_list_empty(master);
+ 	master_mutex_unlock();
+ 
+ 	return res;
+@@ -1859,7 +1868,8 @@ int master_done(struct master *master)
+ 		master_free_mapent_sources(entry, 1);
+ 		master_free_mapent(entry);
+ 	}
+-	if (list_empty(&master->mounts))
++
++	if (__master_list_empty(master))
+ 		res = 1;
+ 
+ 	return res;
+@@ -1872,7 +1882,7 @@ unsigned int master_get_logopt(void)
+ 
+ int master_kill(struct master *master)
+ {
+-	if (!list_empty(&master->mounts))
++	if (!master_list_empty(master))
+ 		return 0;
+ 
+ 	if (master->name)
+--- autofs-5.1.4.orig/include/master.h
++++ autofs-5.1.4/include/master.h
+@@ -123,6 +123,7 @@ int master_mount_mounts(struct master *,
+ int dump_map(struct master *, const char *, const char *);
+ int master_show_mounts(struct master *);
+ unsigned int master_get_logopt(void);
++int __master_list_empty(struct master *);
+ int master_list_empty(struct master *);
+ int master_done(struct master *);
+ int master_kill(struct master *);

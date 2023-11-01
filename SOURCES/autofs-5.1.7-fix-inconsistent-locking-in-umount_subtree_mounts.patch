@@ -1,0 +1,129 @@
+autofs-5.1.7 - fix inconsistent locking in umount_subtree_mounts()
+
+From: Ian Kent <raven@themaw.net>
+
+Some map entry cache locking inconsistencies have crept in.
+
+In umount_subtree_mounts() the cache write lock should be held when
+deleting multi-mount cache entries.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |   42 ++++++++++++++++++++++++++++++------------
+ lib/mounts.c       |    8 --------
+ 3 files changed, 31 insertions(+), 20 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -14,6 +14,7 @@
+ - eliminate clean_stale_multi_triggers().
+ - simplify mount_subtree() mount check.
+ - fix mnts_get_expire_list() expire list construction.
++- fix inconsistent locking in umount_subtree_mounts().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -527,8 +527,11 @@ static int umount_subtree_mounts(struct
+ 	struct mapent_cache *mc;
+ 	struct mapent *me;
+ 	unsigned int is_mm_root = 0;
++	int cur_state;
+ 	int left;
+ 
++	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
++
+ 	me = lookup_source_mapent(ap, path, LKP_DISTINCT);
+ 	if (!me) {
+ 		char *ind_key;
+@@ -548,11 +551,11 @@ static int umount_subtree_mounts(struct
+ 	left = 0;
+ 
+ 	if (me && me->multi) {
+-		char root[PATH_MAX];
++		char root[PATH_MAX + 1];
++		char key[PATH_MAX + 1];
++		struct mapent *tmp;
++		int status;
+ 		char *base;
+-		int cur_state;
+-
+-		pthread_cleanup_push(cache_lock_cleanup, mc);
+ 
+ 		if (!strchr(me->multi->key, '/'))
+ 			/* Indirect multi-mount root */
+@@ -567,25 +570,40 @@ static int umount_subtree_mounts(struct
+ 		else
+ 			base = me->key + strlen(root);
+ 
+-		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-		/* Lock the closest parent nesting point for umount */
+-		cache_multi_writelock(me->parent);
+-		if (umount_multi_triggers(ap, me, root, base)) {
++		left = umount_multi_triggers(ap, me, root, base);
++		if (left) {
+ 			warn(ap->logopt,
+ 			     "some offset mounts still present under %s", path);
++		}
++
++		strcpy(key, me->key);
++
++		cache_unlock(mc);
++		cache_writelock(mc);
++		tmp = cache_lookup_distinct(mc, key);
++		/* mapent went away while we waited? */
++		if (tmp != me) {
++			cache_unlock(mc);
++			pthread_setcancelstate(cur_state, NULL);
++			return 0;
++		}
++
++		if (!left && is_mm_root) {
++			status = cache_delete_offset_list(mc, me->key);
++			if (status != CHE_OK)
++				warn(ap->logopt, "couldn't delete offset list");
+ 			left++;
+ 		}
+-		cache_multi_unlock(me->parent);
++
+ 		if (ap->entry->maps &&
+ 		    (ap->entry->maps->flags & MAP_FLAG_FORMAT_AMD))
+ 			cache_pop_mapent(me);
+-		pthread_setcancelstate(cur_state, NULL);
+-		pthread_cleanup_pop(0);
+ 	}
+-
+ 	if (me)
+ 		cache_unlock(mc);
+ 
++	pthread_setcancelstate(cur_state, NULL);
++
+ 	if (left || is_autofs_fs)
+ 		return left;
+ 
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2730,9 +2730,6 @@ int umount_multi_triggers(struct autofs_
+ 	left = do_umount_multi_triggers(ap, me, root, base);
+ 
+ 	if (!left && me->multi == me) {
+-		struct mapent_cache *mc = me->mc;
+-		int status;
+-
+ 		/*
+ 		 * Special case.
+ 		 * If we can't umount the root container then we can't
+@@ -2750,11 +2747,6 @@ int umount_multi_triggers(struct autofs_
+ 			}
+ 		}
+ 
+-		/* We're done - clean out the offsets */
+-		status = cache_delete_offset_list(mc, me->key);
+-		if (status != CHE_OK)
+-			warn(ap->logopt, "couldn't delete offset list");
+-
+ 	       /* check for mounted mount entry and remove it if found */
+                mnts_remove_mount(root, MNTS_MOUNTED);
+ 	}

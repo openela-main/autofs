@@ -1,0 +1,39 @@
+autofs-5.1.6 - improve force unlink mounts option description
+
+From: Ian Kent <raven@themaw.net>
+
+Update the automount(8) man page description of the force unlink mounts
+option to indicate it operates on configured autofs mounts and mounts
+under them.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ man/automount.8 |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -87,6 +87,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix unlink mounts umount order.
+ - fix incorrect logical compare in unlink_mount_tree().
+ - use bit flag for force unlink mounts.
++- improve force unlink option description.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/man/automount.8
++++ autofs-5.1.4/man/automount.8
+@@ -118,9 +118,9 @@ path name as specified in the master map
+ Don't check if the daemon is currently running (see NOTES).
+ .TP
+ .I "\-F, \-\-force"
+-Force an unlink umount of existing mounts under autofs managed mount points
+-during startup. This can cause problems for processes with working directories
+-within these mounts (see NOTES).
++Force an unlink umount of existing mounts under configured autofs managed
++mount points during startup. This can cause problems for processes with
++working directories within these mounts (see NOTES).
+ .SH ARGUMENTS
+ \fBautomount\fP takes one optional argument, the name of the master map to
+ use.

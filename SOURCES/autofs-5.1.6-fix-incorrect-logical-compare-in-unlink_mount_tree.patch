@@ -1,0 +1,33 @@
+autofs-5.1.6 - fix incorrect logical compare in unlink_mount_tree()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix silly mistake using or instead of and in unlink_mount_tree().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -85,6 +85,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix incorrect systemctl command syntax in autofs(8).
+ - fix direct mount unlink_mount_tree() path.
+ - fix unlink mounts umount order.
++- fix incorrect logical compare in unlink_mount_tree().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -959,7 +959,7 @@ int unlink_mount_tree(struct autofs_poin
+ 		return 0;
+ 
+ 	for (mnt = mnts; mnt; mnt = mnt->next) {
+-		if (mnt->flags | MNTS_AUTOFS)
++		if (mnt->flags & MNTS_AUTOFS)
+ 			rv = umount2(mnt->mp, MNT_DETACH);
+ 		else
+ 			rv = spawn_umount(ap->logopt, "-l", mnt->mp, NULL);

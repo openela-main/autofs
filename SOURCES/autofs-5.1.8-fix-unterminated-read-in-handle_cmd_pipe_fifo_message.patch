@@ -1,0 +1,46 @@
+autofs-5.1.8 - fix unterminated read in handle_cmd_pipe_fifo_message()
+
+From: Ian Kent <raven@themaw.net>
+
+As Coverity points out the buffer in handle_cmd_pipe_fifo_message()
+could be overflowed and end up not terminated so fix it.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    7 ++++++-
+ 2 files changed, 7 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -123,6 +123,7 @@
+ - switch to application wide command pipe.
+ - get rid of unused field submnt_count.
+ - fix mount tree startup reconnect.
++- fix unterminated read in handle_cmd_pipe_fifo_message().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1415,7 +1415,6 @@ static void handle_cmd_pipe_fifo_message
+ 	int ret;
+ 	long pri;
+ 
+-	memset(buffer, 0, sizeof(buffer));
+ 	ret = read(fd, &buffer, sizeof(buffer));
+ 	if (ret < 0) {
+ 		char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+@@ -1423,6 +1422,12 @@ static void handle_cmd_pipe_fifo_message
+ 		     "read on command pipe returned error: %s", estr);
+ 		return;
+ 	}
++	if (ret >= sizeof(buffer)) {
++		error(LOGOPT_ANY,
++		      "read overrun on command pipe message");
++		return;
++	}
++	buffer[ret] = 0;
+ 
+ 	sep = strrchr(buffer, ' ');
+ 	if (!sep) {

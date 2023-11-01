@@ -1,0 +1,61 @@
+autofs-5.1.7 - fix mount_fullpath()
+
+From: Ian Kent <raven@themaw.net>
+
+mount_fullpath() incorrecly fills fullpath with the contents of root
+when name[0] == '/'. The cases root[last] == '/' and name[0] == '/'
+need to be handled seperately.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ lib/mounts.c        |    4 +++-
+ modules/parse_amd.c |    6 ++++--
+ 3 files changed, 8 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -36,6 +36,7 @@
+ - add tree_mapent_add_node().
+ - add tree_mapent_delete_offsets().
+ - add tree_mapent_traverse_subtree().
++- fix mount_fullpath().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -371,8 +371,10 @@ int mount_fullpath(char *fullpath, size_
+ 	/* Root offset of multi-mount or direct or offset mount.
+ 	 * Direct or offset mount, name (or root) is absolute path.
+ 	 */
+-	if (root[last] == '/' || *name == '/')
++	if (root[last] == '/')
+ 		len = snprintf(fullpath, max_len, "%s", root);
++	else if (*name == '/')
++		len = snprintf(fullpath, max_len, "%s", name);
+ 	else
+ 		len = snprintf(fullpath, max_len, "%s/%s", root, name);
+ 
+--- autofs-5.1.4.orig/modules/parse_amd.c
++++ autofs-5.1.4/modules/parse_amd.c
+@@ -1177,7 +1177,8 @@ static int do_generic_mount(struct autof
+ 		 * the automount filesystem.
+ 		 */
+ 		if (!is_mounted(entry->fs, MNTS_REAL)) {
+-			ret = do_mount(ap, entry->fs, "/", 1,
++			ret = do_mount(ap, entry->fs,
++				       entry->fs, strlen(entry->fs),
+ 				       target, entry->type, opts);
+ 			if (ret)
+ 				goto out;
+@@ -1227,7 +1228,8 @@ static int do_nfs_mount(struct autofs_po
+ 					     mount_nfs->context);
+ 	} else {
+ 		if (!is_mounted(entry->fs, MNTS_REAL)) {
+-			ret = mount_nfs->mount_mount(ap, entry->fs, "/", 1,
++			ret = mount_nfs->mount_mount(ap, entry->fs,
++						entry->fs, strlen(entry->fs),
+ 						target, entry->type, opts,
+ 						mount_nfs->context);
+ 			if (ret)

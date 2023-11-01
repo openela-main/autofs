@@ -1,0 +1,620 @@
+autofs-5.1.6 - use struct mnt_list mounted list for expire
+
+From: Ian Kent <raven@themaw.net>
+
+Now we are keeping track of mounted mounts using the mnt_list struct
+use it to drive the expire instead of using the system mount table.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG         |    1 
+ daemon/direct.c   |   61 +++++++----------
+ daemon/indirect.c |   66 +++++++++----------
+ include/mounts.h  |    5 -
+ lib/master.c      |   36 +---------
+ lib/mounts.c      |  185 ++++++++++++++++++++++++++++++++++++++++++++++--------
+ 6 files changed, 223 insertions(+), 131 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -129,6 +129,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix remount expire.
+ - fix stale offset directories disable mount.
+ - use struct mnt_list to track mounted mounts.
++- use struct mnt_list mounted list for expire.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -77,9 +77,8 @@ static void key_mnt_params_init(void)
+ 
+ static void mnts_cleanup(void *arg)
+ {
+-	struct mnt_list *mnts = (struct mnt_list *) arg;
+-	tree_free_mnt_tree(mnts);
+-	return;
++	struct list_head *mnts = (struct list_head *) arg;
++	mnts_put_expire_list(mnts);
+ }
+ 
+ int do_umount_autofs_direct(struct autofs_point *ap, struct mapent *me)
+@@ -788,8 +787,8 @@ out_err:
+ void *expire_proc_direct(void *arg)
+ {
+ 	struct ioctl_ops *ops = get_ioctl_ops();
+-	struct mnt_list *mnts = NULL, *next;
+-	struct list_head list, *p;
++	struct mnt_list *mnt;
++	LIST_HEAD(mnts);
+ 	struct expire_args *ea;
+ 	struct expire_args ec;
+ 	struct autofs_point *ap;
+@@ -821,31 +820,24 @@ void *expire_proc_direct(void *arg)
+ 
+ 	left = 0;
+ 
+-	mnts = tree_make_mnt_tree("/");
+-	pthread_cleanup_push(mnts_cleanup, mnts);
+-
+-	/* Get a list of mounts select real ones and expire them if possible */
+-	INIT_LIST_HEAD(&list);
+-	if (!tree_get_mnt_list(mnts, &list, "/", 0)) {
+-		ec.status = 0;
+-		return NULL;
+-	}
+-
+-	list_for_each(p, &list) {
+-		next = list_entry(p, struct mnt_list, list);
+-
++	/* Get the list of real mounts and expire them if possible */
++	mnts_get_expire_list(&mnts, ap);
++	if (list_empty(&mnts))
++		goto done;
++	pthread_cleanup_push(mnts_cleanup, &mnts);
++	list_for_each_entry(mnt, &mnts, expire) {
+ 		/*
+ 		 * All direct mounts must be present in the map
+ 		 * entry cache.
+ 		 */
+ 		pthread_cleanup_push(master_source_lock_cleanup, ap->entry);
+ 		master_source_readlock(ap->entry);
+-		me = lookup_source_mapent(ap, next->mp, LKP_DISTINCT);
++		me = lookup_source_mapent(ap, mnt->mp, LKP_DISTINCT);
+ 		pthread_cleanup_pop(1);
+ 		if (!me)
+ 			continue;
+ 
+-		if (next->flags & MNTS_AUTOFS) {
++		if (mnt->flags & (MNTS_AUTOFS|MNTS_OFFSET)) {
+ 			struct stat st;
+ 			int ioctlfd;
+ 
+@@ -856,22 +848,17 @@ void *expire_proc_direct(void *arg)
+ 			 * one of them and pass on state change.
+ 			 */
+ 			pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-			if (next->flags & MNTS_INDIRECT) {
+-				master_notify_submount(ap, next->mp, ap->state);
+-				pthread_setcancelstate(cur_state, NULL);
+-				continue;
+-			}
++			if (mnt->flags & MNTS_AUTOFS)
++				master_notify_submount(ap, mnt->mp, ap->state);
+ 
+ 			if (me->ioctlfd == -1) {
+ 				pthread_setcancelstate(cur_state, NULL);
+ 				continue;
+ 			}
+ 
+-			/* It's got a mount, deal with in the outer loop */
+-			if (is_mounted(me->key, MNTS_REAL)) {
+-				pthread_setcancelstate(cur_state, NULL);
+-				continue;
+-			}
++			/* It's got a mount, just send the expire. */
++			if (is_mounted(me->key, MNTS_REAL))
++				goto cont;
+ 
+ 			/*
+ 			 * Maybe a manual umount, repair.
+@@ -888,19 +875,19 @@ void *expire_proc_direct(void *arg)
+ 			cache_writelock(me->mc);
+ 			if (me->ioctlfd != -1 && 
+ 			    fstat(me->ioctlfd, &st) != -1 &&
+-			    !count_mounts(ap, next->mp, st.st_dev)) {
++			    !count_mounts(ap, mnt->mp, st.st_dev)) {
+ 				ops->close(ap->logopt, me->ioctlfd);
+ 				me->ioctlfd = -1;
+ 				cache_unlock(me->mc);
+-				mnts_remove_mount(next->mp, MNTS_MOUNTED);
++				mnts_remove_mount(mnt->mp, MNTS_MOUNTED);
+ 				pthread_setcancelstate(cur_state, NULL);
+ 				continue;
+ 			}
+ 			cache_unlock(me->mc);
+-
++cont:
+ 			ioctlfd = me->ioctlfd;
+ 
+-			ret = ops->expire(ap->logopt, ioctlfd, next->mp, how);
++			ret = ops->expire(ap->logopt, ioctlfd, mnt->mp, how);
+ 			if (ret) {
+ 				left++;
+ 				pthread_setcancelstate(cur_state, NULL);
+@@ -923,10 +910,10 @@ void *expire_proc_direct(void *arg)
+ 		if (ap->state == ST_EXPIRE || ap->state == ST_PRUNE)
+ 			pthread_testcancel();
+ 
+-		debug(ap->logopt, "send expire to trigger %s", next->mp);
++		debug(ap->logopt, "send expire to trigger %s", mnt->mp);
+ 
+ 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-		ret = ops->expire(ap->logopt, ioctlfd, next->mp, how);
++		ret = ops->expire(ap->logopt, ioctlfd, mnt->mp, how);
+ 		if (ret)
+ 			left++;
+ 		pthread_setcancelstate(cur_state, NULL);
+@@ -935,7 +922,7 @@ void *expire_proc_direct(void *arg)
+ 
+ 	if (left)
+ 		debug(ap->logopt, "%d remaining in %s", left, ap->path);
+-
++done:
+ 	ec.status = left;
+ 
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -343,17 +343,17 @@ force_umount:
+ 
+ static void mnts_cleanup(void *arg)
+ {
+-	struct mnt_list *mnts = (struct mnt_list *) arg;
+-	free_mnt_list(mnts);
+-	return;
++	struct list_head *mnts = (struct list_head *) arg;
++	mnts_put_expire_list(mnts);
+ }
+ 
+ void *expire_proc_indirect(void *arg)
+ {
+ 	struct ioctl_ops *ops = get_ioctl_ops();
+ 	struct autofs_point *ap;
+-	struct mapent *me = NULL;
+-	struct mnt_list *mnts = NULL, *next;
++	struct mnt_list *mnt;
++	LIST_HEAD(mnts);
++	struct mapent *me;
+ 	struct expire_args *ea;
+ 	struct expire_args ec;
+ 	unsigned int how;
+@@ -385,36 +385,34 @@ void *expire_proc_indirect(void *arg)
+ 
+ 	left = 0;
+ 
+-	/* Get a list of real mounts and expire them if possible */
+-	mnts = get_mnt_list(ap->path, 0);
+-	pthread_cleanup_push(mnts_cleanup, mnts);
+-	for (next = mnts; next; next = next->next) {
++	/* Get the list of real mounts and expire them if possible */
++	mnts_get_expire_list(&mnts, ap);
++	if (list_empty(&mnts))
++		goto done;
++	pthread_cleanup_push(mnts_cleanup, &mnts);
++	list_for_each_entry(mnt, &mnts, expire) {
+ 		char *ind_key;
+ 		int ret;
+ 
+-		if (next->flags & MNTS_AUTOFS) {
++		if (mnt->flags & (MNTS_AUTOFS|MNTS_OFFSET)) {
+ 			/*
+ 			 * If we have submounts check if this path lives below
+ 			 * one of them and pass on the state change.
+ 			 */
+ 			pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-			if (next->flags & MNTS_INDIRECT)
+-				master_notify_submount(ap, next->mp, ap->state);
+-			else if (next->flags & MNTS_OFFSET) {
++			if (mnt->flags & MNTS_AUTOFS)
++				master_notify_submount(ap, mnt->mp, ap->state);
++
++			/* An offset without a real mount, check for manual umount */
++			if (mnt->flags & MNTS_OFFSET &&
++			    !is_mounted(mnt->mp, MNTS_REAL)) {
+ 				struct mnt_list *sbmnt;
+ 				struct map_source *map;
+ 				struct mapent_cache *mc = NULL;
+-				struct mapent *me = NULL;
+ 				struct stat st;
+ 
+-				/* It's got a mount, deal with in the outer loop */
+-				if (is_mounted(next->mp, MNTS_REAL)) {
+-					pthread_setcancelstate(cur_state, NULL);
+-					continue;
+-				}
+-
+ 				/* Don't touch submounts */
+-				sbmnt = mnts_find_submount(next->mp);
++				sbmnt = mnts_find_submount(mnt->mp);
+ 				if (sbmnt) {
+ 					mnts_put_mount(sbmnt);
+ 					pthread_setcancelstate(cur_state, NULL);
+@@ -427,7 +425,7 @@ void *expire_proc_indirect(void *arg)
+ 				while (map) {
+ 					mc = map->mc;
+ 					cache_writelock(mc);
+-					me = cache_lookup_distinct(mc, next->mp);
++					me = cache_lookup_distinct(mc, mnt->mp);
+ 					if (me)
+ 						break;
+ 					cache_unlock(mc);
+@@ -456,10 +454,10 @@ void *expire_proc_indirect(void *arg)
+ 
+ 				cache_unlock(mc);
+ 				master_source_unlock(ap->entry);
++				pthread_setcancelstate(cur_state, NULL);
++				continue;
+ 			}
+-
+ 			pthread_setcancelstate(cur_state, NULL);
+-			continue;
+ 		}
+ 
+ 		if (ap->state == ST_EXPIRE || ap->state == ST_PRUNE)
+@@ -469,7 +467,7 @@ void *expire_proc_indirect(void *arg)
+ 		 * If the mount corresponds to an offset trigger then
+ 		 * the key is the path, otherwise it's the last component.
+ 		 */
+-		ind_key = strrchr(next->mp, '/');
++		ind_key = strrchr(mnt->mp, '/');
+ 		if (ind_key)
+ 			ind_key++;
+ 
+@@ -482,7 +480,7 @@ void *expire_proc_indirect(void *arg)
+ 		 */
+ 		pthread_cleanup_push(master_source_lock_cleanup, ap->entry);
+ 		master_source_readlock(ap->entry);
+-		me = lookup_source_mapent(ap, next->mp, LKP_DISTINCT);
++		me = lookup_source_mapent(ap, mnt->mp, LKP_DISTINCT);
+ 		if (!me && ind_key)
+ 			me = lookup_source_mapent(ap, ind_key, LKP_NORMAL);
+ 		pthread_cleanup_pop(1);
+@@ -494,10 +492,10 @@ void *expire_proc_indirect(void *arg)
+ 			cache_unlock(me->mc);
+ 		}
+ 
+-		debug(ap->logopt, "expire %s", next->mp);
++		debug(ap->logopt, "expire %s", mnt->mp);
+ 
+ 		pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+-		ret = ops->expire(ap->logopt, ioctlfd, next->mp, how);
++		ret = ops->expire(ap->logopt, ioctlfd, mnt->mp, how);
+ 		if (ret)
+ 			left++;
+ 		pthread_setcancelstate(cur_state, NULL);
+@@ -519,14 +517,14 @@ void *expire_proc_indirect(void *arg)
+ 	pthread_cleanup_pop(1);
+ 
+ 	count = offsets = submnts = 0;
+-	mnts = get_mnt_list(ap->path, 0);
+-	pthread_cleanup_push(mnts_cleanup, mnts);
++	mnts_get_expire_list(&mnts, ap);
++	pthread_cleanup_push(mnts_cleanup, &mnts);
+ 	/* Are there any real mounts left */
+-	for (next = mnts; next; next = next->next) {
+-		if (!(next->flags & MNTS_AUTOFS))
++	list_for_each_entry(mnt, &mnts, expire) {
++		if (!(mnt->flags & MNTS_AUTOFS))
+ 			count++;
+ 		else {
+-			if (next->flags & MNTS_INDIRECT)
++			if (mnt->flags & MNTS_INDIRECT)
+ 				submnts++;
+ 			else
+ 				offsets++;
+@@ -544,7 +542,7 @@ void *expire_proc_indirect(void *arg)
+ 	 */
+ 	if (count)
+ 		debug(ap->logopt, "%d remaining in %s", count, ap->path);
+-
++done:
+ 	ec.status = left;
+ 
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &cur_state);
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -63,6 +63,8 @@ struct mnt_list {
+ 
+ 	/* List of mounts of an autofs_point */
+ 	struct list_head mount;
++	/* Mounted mounts list for expire */
++	struct list_head expire;
+ 
+ 	/* List of sub-mounts of an autofs_point */
+ 	struct autofs_point *ap;
+@@ -129,15 +131,12 @@ void mnts_put_mount(struct mnt_list *mnt
+ struct mnt_list *mnts_find_submount(const char *path);
+ struct mnt_list *mnts_add_submount(struct autofs_point *ap);
+ void mnts_remove_submount(const char *mp);
+-void mnts_get_submount_list(struct list_head *mnts, struct autofs_point *ap);
+-void mnts_put_submount_list(struct list_head *mnts);
+ struct mnt_list *mnts_find_amdmount(const char *path);
+ struct mnt_list *mnts_add_amdmount(struct autofs_point *ap, struct amd_entry *entry);
+ void mnts_remove_amdmount(const char *mp);
+ struct mnt_list *mnts_add_mount(struct autofs_point *ap, const char *name, unsigned int flags);
+ void mnts_remove_mount(const char *mp, unsigned int flags);
+ struct mnt_list *get_mnt_list(const char *path, int include);
+-unsigned int mnts_has_mounted_mounts(struct autofs_point *ap);
+ void mnts_get_expire_list(struct list_head *mnts, struct autofs_point *ap);
+ void mnts_put_expire_list(struct list_head *mnts);
+ void mnts_set_mounted_mount(struct autofs_point *ap, const char *name);
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -1133,40 +1133,17 @@ int master_submount_list_empty(struct au
+ int master_notify_submount(struct autofs_point *ap, const char *path, enum states state)
+ {
+ 	struct mnt_list *this, *sbmnt;
+-	LIST_HEAD(sbmnts);
+ 	int ret = 1;
+ 
+-	mnts_get_submount_list(&sbmnts, ap);
+-	if (list_empty(&sbmnts))
+-		return 1;
+-
+-	list_for_each_entry(this, &sbmnts, submount_work) {
+-		/* Not a submount */
+-		if (!(this->flags & MNTS_AUTOFS))
+-			continue;
+-
+-		/* path not the same */
+-		if (strcmp(this->mp, path))
+-			continue;
+-
+-		if (!master_submount_list_empty(this->ap)) {
+-			struct mnt_list *sm;
+-
+-			master_notify_submount(this->ap, path, state);
+-			sm = mnts_find_submount(path);
+-			if (!sm)
+-				continue;
+-			mnts_put_mount(sm);
+-		}
+-
+-		/* Now we have found the submount we want to expire */
+-
++	this = mnts_find_submount(path);
++	if (this) {
++		/* We have found a submount to expire */
+ 		st_mutex_lock();
+ 
+ 		if (this->ap->state == ST_SHUTDOWN) {
+ 			this = NULL;
+ 			st_mutex_unlock();
+-			break;
++			goto done;
+ 		}
+ 
+ 		this->ap->shutdown = ap->shutdown;
+@@ -1202,11 +1179,10 @@ int master_notify_submount(struct autofs
+ 			st_mutex_lock();
+ 		}
+ 		st_mutex_unlock();
+-		break;
++done:
++		mnts_put_mount(this);
+ 	}
+ 
+-	mnts_put_submount_list(&sbmnts);
+-
+ 	return ret;
+ }
+ 
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -888,6 +888,7 @@ static struct mnt_list *mnts_alloc_mount
+ 	INIT_LIST_HEAD(&this->submount);
+ 	INIT_LIST_HEAD(&this->submount_work);
+ 	INIT_LIST_HEAD(&this->amdmount);
++	INIT_LIST_HEAD(&this->expire);
+ done:
+ 	return this;
+ }
+@@ -1022,33 +1023,6 @@ void mnts_remove_submount(const char *mp
+ 	mnts_hash_mutex_unlock();
+ }
+ 
+-void mnts_get_submount_list(struct list_head *mnts, struct autofs_point *ap)
+-{
+-	struct mnt_list *mnt;
+-
+-	mnts_hash_mutex_lock();
+-	if (list_empty(&ap->submounts))
+-		goto done;
+-	list_for_each_entry(mnt, &ap->submounts, submount) {
+-		__mnts_get_mount(mnt);
+-		list_add(&mnt->submount_work, mnts);
+-	}
+-done:
+-	mnts_hash_mutex_unlock();
+-}
+-
+-void mnts_put_submount_list(struct list_head *mnts)
+-{
+-	struct mnt_list *mnt, *tmp;
+-
+-	mnts_hash_mutex_lock();
+-	list_for_each_entry_safe(mnt, tmp, mnts, submount_work) {
+-		list_del_init(&mnt->submount_work);
+-		__mnts_put_mount(mnt);
+-	}
+-	mnts_hash_mutex_unlock();
+-}
+-
+ struct mnt_list *mnts_find_amdmount(const char *path)
+ {
+ 	struct mnt_list *mnt;
+@@ -1234,6 +1208,163 @@ void mnts_set_mounted_mount(struct autof
+ 	}
+ }
+ 
++struct node {
++	struct mnt_list *mnt;
++	struct node *left;
++	struct node *right;
++};
++
++static struct node *new(struct mnt_list *mnt)
++{
++	struct node *n;
++
++	n = malloc(sizeof(struct node));
++	if (!n)
++		return NULL;
++	memset(n, 0, sizeof(struct node));
++	n->mnt = mnt;
++
++	return n;
++}
++
++static struct node *tree_root(struct mnt_list *mnt)
++{
++	struct node *n;
++
++	n = new(mnt);
++	if (!n) {
++		error(LOGOPT_ANY, "failed to allcate tree root");
++		return NULL;
++	}
++
++	return n;
++}
++
++static struct node *add_left(struct node *this, struct mnt_list *mnt)
++{
++	struct node *n;
++
++	n = new(mnt);
++	if (!n) {
++		error(LOGOPT_ANY, "failed to allcate tree node");
++		return NULL;
++	}
++	this->left = n;
++
++	return n;
++}
++
++static struct node *add_right(struct node *this, struct mnt_list *mnt)
++{
++	struct node *n;
++
++	n = new(mnt);
++	if (!n) {
++		error(LOGOPT_ANY, "failed to allcate tree node");
++		return NULL;
++	}
++	this->right = n;
++
++	return n;
++}
++
++static struct node *add_node(struct node *root, struct mnt_list *mnt)
++{
++	struct node *p, *q;
++	unsigned int mp_len;
++
++	mp_len = strlen(mnt->mp);
++
++	q = root;
++	p = root;
++
++	while (q && strcmp(mnt->mp, p->mnt->mp)) {
++		p = q;
++		if (mp_len < strlen(p->mnt->mp))
++			q = p->left;
++		else
++			q = p->right;
++	}
++
++	if (strcmp(mnt->mp, p->mnt->mp) == 0)
++		error(LOGOPT_ANY, "duplicate entry in mounts list");
++	else {
++		if (mp_len < strlen(p->mnt->mp))
++			return add_left(p, mnt);
++		else
++			return add_right(p, mnt);
++	}
++
++	return NULL;
++}
++
++static void tree_free(struct node *tree)
++{
++	if (tree->right)
++		tree_free(tree->right);
++	if (tree->left)
++		tree_free(tree->left);
++	free(tree);
++}
++
++static void traverse(struct node *node, struct list_head *mnts)
++{
++	if (node->right)
++		traverse(node->right, mnts);
++	list_add_tail(&node->mnt->expire, mnts);
++	if (node->left)
++		traverse(node->left, mnts);
++}
++
++void mnts_get_expire_list(struct list_head *mnts, struct autofs_point *ap)
++{
++	struct mnt_list *mnt;
++	struct node *tree = NULL;
++
++	mnts_hash_mutex_lock();
++	if (list_empty(&ap->mounts))
++		goto done;
++
++	list_for_each_entry(mnt, &ap->mounts, mount) {
++		struct node *n;
++
++		__mnts_get_mount(mnt);
++
++		if (!tree) {
++			tree = tree_root(mnt);
++			if (!tree) {
++				error(LOGOPT_ANY, "failed to create expire tree root");
++				goto done;
++			}
++			continue;
++		}
++
++		n = add_node(tree, mnt);
++		if (!n) {
++			error(LOGOPT_ANY, "failed to add expire tree node");
++			tree_free(tree);
++			goto done;
++		}
++	}
++
++	traverse(tree, mnts);
++	tree_free(tree);
++done:
++	mnts_hash_mutex_unlock();
++}
++
++void mnts_put_expire_list(struct list_head *mnts)
++{
++	struct mnt_list *mnt, *tmp;
++
++	mnts_hash_mutex_lock();
++	list_for_each_entry_safe(mnt, tmp, mnts, expire) {
++		list_del_init(&mnt->expire);
++		__mnts_put_mount(mnt);
++	}
++	mnts_hash_mutex_unlock();
++}
++
+ /* From glibc decode_name() */
+ /* Since the values in a line are separated by spaces, a name cannot
+  * contain a space.  Therefore some programs encode spaces in names

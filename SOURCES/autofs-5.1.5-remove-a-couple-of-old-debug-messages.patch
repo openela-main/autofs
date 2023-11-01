@@ -1,0 +1,38 @@
+autofs-5.1.5 - remove a couple of old debug messages
+
+From: Ian Kent <raven@themaw.net>
+
+Remove a couple of debug log messages from lookup_ghost().
+These messages have not shown a problem here and should be
+removed.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    5 -----
+ 2 files changed, 1 insertion(+), 5 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -57,6 +57,7 @@ xx/xx/2018 autofs-5.1.5
+ - change expire type naming to better reflect usage.
+ - remove unused function has_fstab_option().
+ - remove unused function reverse_mnt_list().
++- remove a couple of old debug messages.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/lookup.c
++++ autofs-5.1.4/daemon/lookup.c
+@@ -793,11 +793,6 @@ int lookup_ghost(struct autofs_point *ap
+ 
+ 			/* Directory already exists? */
+ 			if (!ret) {
+-				/* Shouldn't need this
+-				me->dev = st.st_dev;
+-				me->ino = st.st_ino;
+-				*/
+-				debug(ap->logopt, "me->dev %d me->ino %d", me->dev, me->ino);
+ 				free(fullpath);
+ 				goto next;
+ 			}

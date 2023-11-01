@@ -1,0 +1,36 @@
+autofs-5.1.7 - remove redundant assignment in master_add_amd_mount_section_mounts()
+
+From: Ian Kent <raven@themaw.net>
+
+Coverity: missing_lock: Accessing "entry->current" without holding lock
+	  "master_mapent.current_mutex".
+
+This is initialization not clearing current source. But the field has
+already been initialized in the master_new_mapent() call.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/master.c |    1 -
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -58,6 +58,7 @@
+ - add length check in umount_subtree_mounts().
+ - fix flags check in umount_multi().
+ - dont try umount after stat() ENOENT fail.
++- remove redundant assignment in master_add_amd_mount_section_mounts().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/master.c
++++ autofs-5.1.4/daemon/master.c
+@@ -996,7 +996,6 @@ static void master_add_amd_mount_section
+ 		source->master_line = 0;
+ 
+ 		entry->age = age;
+-		entry->current = NULL;
+ 
+ 		master_add_mapent(master, entry);
+ next:

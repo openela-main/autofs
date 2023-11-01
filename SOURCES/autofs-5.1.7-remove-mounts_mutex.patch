@@ -1,0 +1,168 @@
+autofs-5.1.7 - remove mounts_mutex
+
+From: Ian Kent <raven@themaw.net>
+
+The mounts_mutex is no longer used, remove it.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ daemon/automount.c     |    8 +-------
+ daemon/master.c        |   13 -------------
+ include/automount.h    |    1 -
+ modules/mount_autofs.c |    8 --------
+ 5 files changed, 2 insertions(+), 29 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -48,6 +48,7 @@
+ - remove unused function master_submount_list_empty().
+ - move amd mounts removal into lib/mounts.c.
+ - check for offset with no mount location.
++- remove mounts_mutex.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1749,7 +1749,6 @@ static void handle_mounts_cleanup(void *
+ 	 * here.
+ 	 */
+ 	if (submount) {
+-		mounts_mutex_unlock(ap->parent);
+ 		master_source_unlock(ap->parent->entry);
+ 		master_free_mapent_sources(ap->entry, 1);
+ 		master_free_mapent(ap->entry);
+@@ -1787,13 +1786,9 @@ static int submount_source_writelock_nes
+ 	if (status)
+ 		goto done;
+ 
+-	mounts_mutex_lock(parent);
+-
+ 	status = pthread_rwlock_trywrlock(&ap->entry->source_lock);
+-	if (status) {
+-		mounts_mutex_unlock(parent);
++	if (status)
+ 		master_source_unlock(parent->entry);
+-	}
+ 
+ done:
+ 	if (status && status != EBUSY) {
+@@ -1809,7 +1804,6 @@ static void submount_source_unlock_neste
+ 	struct autofs_point *parent = ap->parent;
+ 
+ 	master_source_unlock(ap->entry);
+-	mounts_mutex_unlock(parent);
+ 	master_source_unlock(parent->entry);
+ }
+ 
+--- autofs-5.1.4.orig/daemon/master.c
++++ autofs-5.1.4/daemon/master.c
+@@ -69,7 +69,6 @@ int master_add_autofs_point(struct maste
+ 			    unsigned nobind, unsigned ghost, int submount)
+ {
+ 	struct autofs_point *ap;
+-	int status;
+ 
+ 	ap = malloc(sizeof(struct autofs_point));
+ 	if (!ap)
+@@ -128,12 +127,6 @@ int master_add_autofs_point(struct maste
+ 	INIT_LIST_HEAD(&ap->amdmounts);
+ 	ap->shutdown = 0;
+ 
+-	status = pthread_mutex_init(&ap->mounts_mutex, NULL);
+-	if (status) {
+-		free(ap->path);
+-		free(ap);
+-		return 0;
+-	}
+ 	ap->mode = 0;
+ 
+ 	entry->ap = ap;
+@@ -143,17 +136,11 @@ int master_add_autofs_point(struct maste
+ 
+ void master_free_autofs_point(struct autofs_point *ap)
+ {
+-	int status;
+-
+ 	if (!ap)
+ 		return;
+ 
+ 	mnts_remove_amdmounts(ap);
+ 
+-	status = pthread_mutex_destroy(&ap->mounts_mutex);
+-	if (status)
+-		fatal(status);
+-
+ 	if (ap->pref)
+ 		free(ap->pref);
+ 	free(ap->path);
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -564,7 +564,6 @@ struct autofs_point {
+ 	enum states state;		/* Current state */
+ 	int state_pipe[2];		/* State change router pipe */
+ 	struct autofs_point *parent;	/* Owner of mounts list for submount */
+-	pthread_mutex_t mounts_mutex;	/* Protect mount lists */
+ 	struct list_head mounts;	/* List of autofs mounts at current level */
+ 	unsigned int submount;		/* Is this a submount */
+ 	unsigned int submnt_count;	/* Number of submounts */
+--- autofs-5.1.4.orig/modules/mount_autofs.c
++++ autofs-5.1.4/modules/mount_autofs.c
+@@ -283,8 +283,6 @@ int mount_mount(struct autofs_point *ap,
+ 	set_exp_timeout(nap, NULL, timeout);
+ 	nap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 
+-	mounts_mutex_lock(ap);
+-
+ 	if (source->flags & MAP_FLAG_FORMAT_AMD) {
+ 		struct mnt_list *mnt;
+ 
+@@ -305,7 +303,6 @@ int mount_mount(struct autofs_point *ap,
+ 	if (handle_mounts_startup_cond_init(&suc)) {
+ 		crit(ap->logopt, MODPREFIX
+ 		     "failed to init startup cond for mount %s", entry->path);
+-		mounts_mutex_unlock(ap);
+ 		master_free_map_source(source, 1);
+ 		master_free_mapent(entry);
+ 		return 1;
+@@ -316,7 +313,6 @@ int mount_mount(struct autofs_point *ap,
+ 		crit(ap->logopt,
+ 		     MODPREFIX "failed to allocate mount %s", realpath);
+ 		handle_mounts_startup_cond_destroy(&suc);
+-		mounts_mutex_unlock(ap);
+ 		master_free_map_source(source, 1);
+ 		master_free_mapent(entry);
+ 		return 1;
+@@ -335,7 +331,6 @@ int mount_mount(struct autofs_point *ap,
+ 		     realpath);
+ 		handle_mounts_startup_cond_destroy(&suc);
+ 		mnts_remove_submount(nap->path);
+-		mounts_mutex_unlock(ap);
+ 		master_free_map_source(source, 1);
+ 		master_free_mapent(entry);
+ 		return 1;
+@@ -346,7 +341,6 @@ int mount_mount(struct autofs_point *ap,
+ 		if (status) {
+ 			handle_mounts_startup_cond_destroy(&suc);
+ 			mnts_remove_submount(nap->path);
+-			mounts_mutex_unlock(ap);
+ 			master_free_map_source(source, 1);
+ 			master_free_mapent(entry);
+ 			fatal(status);
+@@ -358,7 +352,6 @@ int mount_mount(struct autofs_point *ap,
+ 		     MODPREFIX "failed to create submount for %s", realpath);
+ 		handle_mounts_startup_cond_destroy(&suc);
+ 		mnts_remove_submount(nap->path);
+-		mounts_mutex_unlock(ap);
+ 		master_free_map_source(source, 1);
+ 		master_free_mapent(entry);
+ 		return 1;
+@@ -368,7 +361,6 @@ int mount_mount(struct autofs_point *ap,
+ 	ap->submnt_count++;
+ 
+ 	handle_mounts_startup_cond_destroy(&suc);
+-	mounts_mutex_unlock(ap);
+ 
+ 	return 0;
+ }

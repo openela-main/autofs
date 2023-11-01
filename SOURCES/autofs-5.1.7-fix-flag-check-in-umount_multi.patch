@@ -1,0 +1,34 @@
+autofs-5.1.7 - fix flags check in umount_multi()
+
+From: Ian Kent <raven@themaw.net>
+
+Coverity: operator_confusion: "ap->flags | 1" is always 1/true
+	  regardless of the values of its operand.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -56,6 +56,7 @@
+ - fix possible memory leak in mnts_add_amdmount().
+ - fix double unlock in parse_mount().
+ - add length check in umount_subtree_mounts().
++- fix flags check in umount_multi().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -661,7 +661,7 @@ int umount_multi(struct autofs_point *ap
+ 		/* Check if the autofs mount has browse mode enabled.
+ 		 * If so re-create the directory entry.
+ 		 */
+-		if (ap->flags | MOUNT_FLAG_GHOST) {
++		if (ap->flags & MOUNT_FLAG_GHOST) {
+ 			int ret;
+ 
+ 			/* If the browse directory create fails log an

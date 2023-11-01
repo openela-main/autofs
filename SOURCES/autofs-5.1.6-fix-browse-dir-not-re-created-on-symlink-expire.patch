@@ -1,0 +1,52 @@
+autofs-5.1.6 - fix browse dir not re-created on symlink expire
+
+From: Ian Kent <raven@themaw.net>
+
+If symlinks are being used for mounts and the autofs mount has browse mode
+enabled when a symlink is removed at expire the browse mode directory needs
+to be re-created.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |   19 +++++++++++++++++++
+ 2 files changed, 20 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -115,6 +115,7 @@ xx/xx/2018 autofs-5.1.5
+ - remove unused function dump_master().
+ - fix additional typing errors.
+ - make bind mounts propagation slave by default.
++- fix browse dir not re-created on symlink expire.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -651,6 +651,25 @@ int umount_multi(struct autofs_point *ap
+ 			      "failed to remove symlink %s", path);
+ 			return 1;
+ 		}
++		/* Check if the autofs mount has browse mode enabled.
++		 * If so re-create the directory entry.
++		 */
++		if (ap->flags | MOUNT_FLAG_GHOST) {
++			int ret;
++
++			/* If the browse directory create fails log an
++			 * error and continue anyway since the expire
++			 * has succeeded.
++			 */
++			ret = mkdir_path(path, mp_mode);
++			if (ret && errno != EEXIST) {
++				char buf[MAX_ERR_BUF];
++				char *estr;
++				estr = strerror_r(errno, buf, MAX_ERR_BUF);
++				warn(ap->logopt,
++				     "mkdir_path %s failed: %s", path, estr);
++			}
++		}
+ 		/* Check for an external mount and attempt umount if needed */
+ 		mounts_mutex_lock(ap);
+ 		entry = __master_find_amdmount(ap, path);

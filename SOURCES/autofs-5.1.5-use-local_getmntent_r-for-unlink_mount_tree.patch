@@ -1,0 +1,179 @@
+autofs-5.1.5 - use local_getmntent_r() for unlink_mount_tree()
+
+From: Ian Kent <raven@themaw.net>
+
+Now that unlink_mount_tree() is located in a single location and
+only one function is used for this, change it to use our local
+getmntent_r() function so that if glibc is changed to support the
+autofs "ignore" hint automount(8) won't be affected.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG         |    1 +
+ daemon/direct.c   |   24 ++++++------------------
+ daemon/indirect.c |   17 ++++++-----------
+ include/mounts.h  |    2 +-
+ lib/mounts.c      |   45 ++++++++++++++++++++++++++++++++++-----------
+ 5 files changed, 48 insertions(+), 41 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -72,6 +72,7 @@ xx/xx/2018 autofs-5.1.5
+ - don't use tree_is_mounted() for mounted checks.
+ - use single unlink_umount_tree() for both direct and indirect mounts.
+ - move unlink_mount_tree() to lib/mounts.c.
++- use local_getmntent_r() for unlink_mount_tree().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -286,8 +286,6 @@ int do_mount_autofs_direct(struct autofs
+ 		if (ret == 0)
+ 			return -1;
+ 	} else {
+-		struct mnt_list *mnts;
+-
+ 		if (ap->state == ST_READMAP && is_mounted(me->key, MNTS_ALL)) {
+ 			time_t tout = get_exp_timeout(ap, me->source);
+ 			int save_ioctlfd, ioctlfd;
+@@ -313,22 +311,12 @@ int do_mount_autofs_direct(struct autofs
+ 			return 0;
+ 		}
+ 
+-		mnts = get_mnt_list(me->key, 1);
+-		if (mnts) {
+-			/*
+-			 * A return of 1 indicates we successfully unlinked
+-			 * the mount tree if there was one. A return of 0
+-			 * indicates we failed to unlink the mount tree so
+-			 * we have to return a failure.
+-			 */
+-			ret = unlink_mount_tree(ap, mnts);
+-			free_mnt_list(mnts);
+-			if (!ret) {
+-				error(ap->logopt,
+-				      "already mounted as other than autofs "
+-				      "or failed to unlink entry in tree");
+-				return -1;
+-			}
++		ret = unlink_mount_tree(ap, ap->path);
++		if (!ret) {
++			error(ap->logopt,
++			     "already mounted as other than autofs "
++			     "or failed to unlink entry in tree");
++			goto out_err;
+ 		}
+ 
+ 		if (me->ioctlfd != -1) {
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -50,7 +50,6 @@ static int do_mount_autofs_indirect(stru
+ 	const char *map_name = hosts_map_name;
+ 	const char *type;
+ 	struct stat st;
+-	struct mnt_list *mnts;
+ 	int ret;
+ 	int err;
+ 
+@@ -70,16 +69,12 @@ static int do_mount_autofs_indirect(stru
+ 		if (ret == 0)
+ 			return -1;
+ 	} else {
+-		mnts = get_mnt_list(ap->path, 1);
+-		if (mnts) {
+-			ret = unlink_mount_tree(ap, mnts);
+-			free_mnt_list(mnts);
+-			if (!ret) {
+-				error(ap->logopt,
+-				      "already mounted as other than autofs "
+-				      "or failed to unlink entry in tree");
+-				goto out_err;
+-			}
++		ret = unlink_mount_tree(ap, ap->path);
++		if (!ret) {
++			error(ap->logopt,
++			      "already mounted as other than autofs "
++			      "or failed to unlink entry in tree");
++			goto out_err;
+ 		}
+ 	}
+ 
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -100,7 +100,7 @@ int ext_mount_add(struct list_head *, co
+ int ext_mount_remove(struct list_head *, const char *);
+ int ext_mount_inuse(const char *);
+ struct mnt_list *get_mnt_list(const char *path, int include);
+-int unlink_mount_tree(struct autofs_point *ap, struct mnt_list *mnts);
++int unlink_mount_tree(struct autofs_point *ap, const char *mp);
+ void free_mnt_list(struct mnt_list *list);
+ int is_mounted(const char *mp, unsigned int type);
+ void tree_free_mnt_tree(struct mnt_list *tree);
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -881,21 +881,44 @@ local_getmntent_r(FILE *tab, struct mnte
+ 	return mnt;
+ }
+ 
+-int unlink_mount_tree(struct autofs_point *ap, struct mnt_list *mnts)
++int unlink_mount_tree(struct autofs_point *ap, const char *mp)
+ {
+-	struct mnt_list *this;
+-	int rv, ret;
++	FILE *tab;
++	struct mntent *mnt;
++	struct mntent mnt_wrk;
++	char buf[PATH_MAX * 3];
++	unsigned int mp_len = strlen(mp);
++	int rv, ret = 1;
+ 
+-	ret = 1;
+-	this = mnts;
+-	while (this) {
+-		if (this->flags & MNTS_AUTOFS)
+-			rv = umount2(this->mp, MNT_DETACH);
++	tab = open_fopen_r(_PROC_MOUNTS);
++	if (!tab) {
++		char *estr = strerror_r(errno, buf, PATH_MAX - 1);
++		logerr("fopen: %s", estr);
++		return 0;
++	}
++
++	while ((mnt = local_getmntent_r(tab, &mnt_wrk, buf, PATH_MAX * 3))) {
++		unsigned int mnt_dir_len;
++		int is_autofs;
++
++		if (strncmp(mnt->mnt_dir, mp, mp_len))
++			continue;
++
++		mnt_dir_len = strlen(mnt->mnt_dir);
++		is_autofs = !strcmp(mnt->mnt_type, "autofs");
++
++		if (mnt_dir_len == mp_len && !is_autofs) {
++			ret = 0;
++			break;
++		}
++
++		if (is_autofs)
++			rv = umount2(mnt->mnt_dir, MNT_DETACH);
+ 		else
+-			rv = spawn_umount(ap->logopt, "-l", this->mp, NULL);
++			rv = spawn_umount(ap->logopt, "-l", mnt->mnt_dir, NULL);
+ 		if (rv == -1) {
+ 			debug(ap->logopt,
+-			      "can't unlink %s from mount tree", this->mp);
++			      "can't unlink %s from mount tree", mnt->mnt_dir);
+ 
+ 			switch (errno) {
+ 			case EINVAL:
+@@ -910,8 +933,8 @@ int unlink_mount_tree(struct autofs_poin
+ 				break;
+ 			}
+ 		}
+-		this = this->next;
+ 	}
++	fclose(tab);
+ 
+ 	return ret;
+ }

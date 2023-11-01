@@ -1,0 +1,48 @@
+autofs-5.1.6 - fix remount expire
+
+From: Ian Kent <raven@themaw.net>
+
+When starting autofs when there are active mounts due to in use
+mounts from a previous shutdown, and a mount entry has offsets,
+and an offset doesn't have a real mount due to a non-strict fail
+returning success for the remount a file handle is incorrectly
+left open.
+
+The file handle gets assingned to the offset entry for expires
+but since there is no mount to expire it never gets closed which
+prevents the multi-mount owner itself from expiring.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    8 +++++++-
+ 2 files changed, 8 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -126,6 +126,7 @@ xx/xx/2018 autofs-5.1.5
+ - use mnt_list for amdmounts.
+ - make umount_autofs() static.
+ - remove force parameter from umount_all().
++- fix remount expire.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2205,8 +2205,14 @@ int try_remount(struct autofs_point *ap,
+ 		if (fd != -1) {
+ 			if (type == t_indirect)
+ 				ap->ioctlfd = fd;
+-			else
++			else {
++				if (type == t_offset &&
++				    !is_mounted(me->key, MNTS_REAL)) {
++					ops->close(ap->logopt, fd);
++					fd = -1;
++				}
+ 				me->ioctlfd = fd;
++			}
+ 			return 1;
+ 		}
+ 
