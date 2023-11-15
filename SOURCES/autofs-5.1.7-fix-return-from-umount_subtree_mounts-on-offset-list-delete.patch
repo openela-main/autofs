@@ -1,0 +1,40 @@
+autofs-5.1.7 - fix return from umount_subtree_mounts() on offset list delete
+
+From: Ian Kent <raven@themaw.net>
+
+When there are no mounts left in a subtree of offset mounts the offset
+list is deleted. If all goes well deleting the list this shouldn't cause
+a positive return from umount_subtree_mounts() (essentially saying not
+the umount of the subtree has not succeeded).
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    5 +++--
+ 2 files changed, 4 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -15,6 +15,7 @@
+ - simplify mount_subtree() mount check.
+ - fix mnts_get_expire_list() expire list construction.
+ - fix inconsistent locking in umount_subtree_mounts().
++- fix return from umount_subtree_mounts() on offset list delete.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -590,9 +590,10 @@ static int umount_subtree_mounts(struct
+ 
+ 		if (!left && is_mm_root) {
+ 			status = cache_delete_offset_list(mc, me->key);
+-			if (status != CHE_OK)
++			if (status != CHE_OK) {
+ 				warn(ap->logopt, "couldn't delete offset list");
+-			left++;
++				left++;
++			}
+ 		}
+ 
+ 		if (ap->entry->maps &&

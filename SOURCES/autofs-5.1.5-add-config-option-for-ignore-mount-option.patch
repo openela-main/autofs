@@ -1,0 +1,155 @@
+autofs-5.1.5 - add config option for "ignore" mount option
+
+From: Ian Kent <raven@themaw.net>
+
+Add a configuration option to control whether the autofs pseudo
+mount option is used on autofs mounts.
+
+The default setting is "no" to avoid unexpected behaviour and
+so is an opt-in setting for those who understand that, if user
+space utilities and libraries honour this, then autofs mounts
+will be ommitted from mount table listings.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ include/defaults.h             |    2 ++
+ lib/defaults.c                 |   17 +++++++++++++++++
+ lib/master.c                   |    3 ++-
+ man/autofs.conf.5.in           |    7 +++++++
+ redhat/autofs.conf.default.in  |    9 +++++++++
+ samples/autofs.conf.default.in |    9 +++++++++
+ 7 files changed, 47 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -62,6 +62,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix unlink_mount_tree() not umounting mounts.
+ - add ignore mount option.
+ - use ignore option for offset mounts as well.
++- add config option for "ignore" mount option
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/include/defaults.h
++++ autofs-5.1.4/include/defaults.h
+@@ -51,6 +51,7 @@
+ 
+ #define DEFAULT_USE_HOSTNAME_FOR_MOUNTS  "0"
+ #define DEFAULT_DISABLE_NOT_FOUND_MESSAGE "0"
++#define DEFAULT_USE_IGNORE_MOUNT_OPTION	 "0"
+ 
+ #define DEFAULT_SSS_MASTER_MAP_WAIT	"0"
+ #define DEFAULT_USE_MOUNT_REQUEST_LOG_ID "0"
+@@ -174,6 +175,7 @@ const char *defaults_get_auth_conf_file(
+ unsigned int defaults_get_map_hash_table_size(void);
+ unsigned int defaults_use_hostname_for_mounts(void);
+ unsigned int defaults_disable_not_found_message(void);
++unsigned int defaults_get_use_ignore_mount_option(void);
+ unsigned int defaults_get_sss_master_map_wait(void);
+ unsigned int defaults_get_use_mount_request_log_id(void);
+ 
+--- autofs-5.1.4.orig/lib/defaults.c
++++ autofs-5.1.4/lib/defaults.c
+@@ -77,6 +77,7 @@
+ 
+ #define NAME_USE_HOSTNAME_FOR_MOUNTS	"use_hostname_for_mounts"
+ #define NAME_DISABLE_NOT_FOUND_MESSAGE	"disable_not_found_message"
++#define NAME_USE_IGNORE_MOUNT_OPTION	"use_ignore_mount_option"
+ 
+ #define NAME_SSS_MASTER_MAP_WAIT	"sss_master_map_wait"
+ #define NAME_USE_MOUNT_REQUEST_LOG_ID	"use_mount_request_log_id"
+@@ -364,6 +365,11 @@ static int conf_load_autofs_defaults(voi
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
++	ret = conf_update(sec, NAME_USE_IGNORE_MOUNT_OPTION,
++			  DEFAULT_USE_IGNORE_MOUNT_OPTION, CONF_ENV);
++	if (ret == CFG_FAIL)
++		goto error;
++
+ 	ret = conf_update(sec, NAME_SSS_MASTER_MAP_WAIT,
+ 			  DEFAULT_SSS_MASTER_MAP_WAIT, CONF_ENV);
+ 	if (ret == CFG_FAIL)
+@@ -1863,6 +1869,17 @@ unsigned int defaults_disable_not_found_
+ 
+ 	return res;
+ }
++
++unsigned int defaults_get_use_ignore_mount_option(void)
++{
++	int res;
++
++	res = conf_get_yesno(autofs_gbl_sec, NAME_USE_IGNORE_MOUNT_OPTION);
++	if (res < 0)
++		res = atoi(DEFAULT_USE_IGNORE_MOUNT_OPTION);
++
++	return res;
++}
+ 
+ unsigned int defaults_get_sss_master_map_wait(void)
+ {
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -101,7 +101,8 @@ int master_add_autofs_point(struct maste
+ 		ap->negative_timeout = global_negative_timeout;
+ 	ap->exp_timeout = defaults_get_timeout();
+ 	ap->exp_runfreq = 0;
+-	ap->flags = MOUNT_FLAG_IGNORE;
++	if (defaults_get_use_ignore_mount_option())
++		ap->flags = MOUNT_FLAG_IGNORE;
+ 	if (ghost)
+ 		ap->flags |= MOUNT_FLAG_GHOST;
+ 
+--- autofs-5.1.4.orig/man/autofs.conf.5.in
++++ autofs-5.1.4/man/autofs.conf.5.in
+@@ -151,6 +151,13 @@ That produces, IMHO, unnecessary noise i
+ has been added to provide the ability to turn it off. The default is "no"
+ to maintain the current behaviour.
+ .TP
++.B use_ignore_mount_option
++.br
++An option to enable the use of autofs pseudo option "disable". This option
++is used as a hint to user space that the mount entry should be ommitted from
++mount table listings. The default is "no" to avoid unexpected changes in
++behaviour and so is an opt-in setting.
++.TP
+ .B sss_master_map_wait
+ .br
+ Set the time to wait and retry if sssd returns "no such entry" when starting
+--- autofs-5.1.4.orig/redhat/autofs.conf.default.in
++++ autofs-5.1.4/redhat/autofs.conf.default.in
+@@ -183,6 +183,15 @@ mount_nfs_default_protocol = 4
+ #
+ #disable_not_found_message = "no"
+ #
++# use_ignore_mount_option - This option is used to enable the use of autofs
++#			pseudo option "disable". This option is used as a
++#			hint to user space that the mount entry should be
++#			ommitted from mount table listings. The default is
++#			"no" to avoid unexpected changes in behaviour and
++#			so is an opt-in setting.
++#
++#use_ignore_mount_option = no
++#
+ # sss_master_map_wait - When sssd is starting up it can sometimes return
+ # 			"no such entry" for a short time until it has read
+ # 			in the LDAP map information. Internal default is 0
+--- autofs-5.1.4.orig/samples/autofs.conf.default.in
++++ autofs-5.1.4/samples/autofs.conf.default.in
+@@ -182,6 +182,15 @@ browse_mode = no
+ #
+ #disable_not_found_message = "no"
+ #
++# use_ignore_mount_option - This option is used to enable the use of autofs
++#			pseudo option "disable". This option is used as a
++#			hint to user space that the mount entry should be
++#			ommitted from mount table listings. The default is
++#			"no" to avoid unexpected changes in behaviour and
++#			so is an opt-in setting.
++#
++#use_ignore_mount_option = no
++#
+ # sss_master_map_wait - When sssd is starting up it can sometimes return
+ #			"no such entry" for a short time until it has read
+ # 			in the LDAP map information. Internal default is 0

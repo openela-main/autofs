@@ -1,0 +1,398 @@
+autofs-5.1.7 - switch to use tree implementation for offsets
+
+From: Ian Kent <raven@themaw.net>
+
+Change to use the tree mapent implementation for the handling
+of offset mounts.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 
+ daemon/automount.c       |   25 ++----------
+ daemon/lookup.c          |    2 -
+ include/automount.h      |    8 ++--
+ lib/cache.c              |   67 ---------------------------------
+ lib/mounts.c             |    4 +-
+ modules/lookup_program.c |    2 -
+ modules/parse_sun.c      |   94 ++++++++++++-----------------------------------
+ 8 files changed, 39 insertions(+), 164 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -40,6 +40,7 @@
+ - add tree_mapent_cleanup_offsets().
+ - add set_offset_tree_catatonic().
+ - add mount and umount offsets functions.
++- switch to use tree implementation for offsets.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -551,29 +551,15 @@ static int umount_subtree_mounts(struct
+ 	left = 0;
+ 
+ 	if (me && IS_MM(me)) {
+-		char root[PATH_MAX + 1];
+ 		char key[PATH_MAX + 1];
+ 		struct mapent *tmp;
+-		int status;
+-		char *base;
++		int ret;
+ 
+-		if (!strchr(MM_ROOT(me)->key, '/'))
+-			/* Indirect multi-mount root */
+-			/* sprintf okay - if it's mounted, it's
+-			 * PATH_MAX or less bytes */
+-			sprintf(root, "%s/%s", ap->path, MM_ROOT(me)->key);
+-		else
+-			strcpy(root, MM_ROOT(me)->key);
+-
+-		if (IS_MM_ROOT(me))
+-			base = NULL;
+-		else
+-			base = me->key + strlen(root);
+-
+-		left = umount_multi_triggers(ap, me, root, base);
+-		if (left) {
++		ret = tree_mapent_umount_offsets(me, 1);
++		if (!ret) {
+ 			warn(ap->logopt,
+ 			     "some offset mounts still present under %s", path);
++			left++;
+ 		}
+ 
+ 		strcpy(key, me->key);
+@@ -589,8 +575,7 @@ static int umount_subtree_mounts(struct
+ 		}
+ 
+ 		if (!left && IS_MM_ROOT(me)) {
+-			status = cache_delete_offset_list(mc, me->key);
+-			if (status != CHE_OK) {
++			if (!tree_mapent_delete_offsets(mc, me->key)) {
+ 				warn(ap->logopt, "couldn't delete offset list");
+ 				left++;
+ 			}
+--- autofs-5.1.4.orig/daemon/lookup.c
++++ autofs-5.1.4/daemon/lookup.c
+@@ -851,7 +851,7 @@ static int lookup_amd_instance(struct au
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
+ 
+-	m_key = malloc(ap->len + strlen(MM_ROOT(me)->key) + 2);
++	m_key = malloc(ap->len + MM_ROOT(me)->len + 2);
+ 	if (!m_key) {
+ 		error(ap->logopt,
+ 		     "failed to allocate storage for search key");
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -187,10 +187,10 @@ struct mapent {
+ 	ino_t ino;
+ };
+ 
+-#define IS_MM(me)	(me->multi)
+-#define IS_MM_ROOT(me)	(me->multi == me)
+-#define MM_ROOT(me)	(me->multi)
+-#define MM_PARENT(me)	(me->parent)
++#define IS_MM(me)	(me->mm_root)
++#define IS_MM_ROOT(me)	(me->mm_root == &me->node)
++#define MM_ROOT(me)	(MAPENT(me->mm_root))
++#define MM_PARENT(me)	(MAPENT(me->mm_parent))
+ 
+ void cache_lock_cleanup(void *arg);
+ void cache_readlock(struct mapent_cache *mc);
+--- autofs-5.1.4.orig/lib/cache.c
++++ autofs-5.1.4/lib/cache.c
+@@ -682,14 +682,6 @@ int cache_update_offset(struct mapent_ca
+ 		return CHE_FAIL;
+ 	}
+ 
+-	me = cache_lookup_distinct(mc, key);
+-	if (me) {
+-		cache_add_ordered_offset(me, &owner->multi_list);
+-		MM_ROOT(me) = owner;
+-		goto done;
+-	}
+-	ret = CHE_FAIL;
+-done:
+ 	return ret; 
+ }
+ 
+@@ -928,65 +920,6 @@ done:
+ 	return ret;
+ }
+ 
+-/* cache must be write locked by caller */
+-int cache_delete_offset_list(struct mapent_cache *mc, const char *key)
+-{
+-	unsigned logopt = mc->ap ? mc->ap->logopt : master_get_logopt();
+-	struct mapent *me;
+-	struct mapent *this;
+-	struct list_head *head, *next;
+-	int remain = 0;
+-	int status;
+-
+-	me = cache_lookup_distinct(mc, key);
+-	if (!me)
+-		return CHE_FAIL;
+-
+-	/* Not offset list owner */
+-	if (!IS_MM_ROOT(me))
+-		return CHE_FAIL;
+-
+-	head = &me->multi_list;
+-	next = head->next;
+-	while (next != head) {
+-		this = list_entry(next, struct mapent, multi_list);
+-		next = next->next;
+-		if (this->ioctlfd != -1) {
+-			error(logopt,
+-			      "active offset mount key %s", this->key);
+-			return CHE_FAIL;
+-		}
+-	}
+-
+-	head = &me->multi_list;
+-	next = head->next;
+-	while (next != head) {
+-		this = list_entry(next, struct mapent, multi_list);
+-		next = next->next;
+-		list_del_init(&this->multi_list);
+-		MM_ROOT(this) = NULL;
+-		debug(logopt, "deleting offset key %s", this->key);
+-		status = cache_delete(mc, this->key);
+-		if (status == CHE_FAIL) {
+-			warn(logopt,
+-			     "failed to delete offset %s", this->key);
+-			MM_ROOT(this) = me;
+-			/* TODO: add list back in */
+-			remain++;
+-		}
+-	}
+-
+-	if (!remain) {
+-		list_del_init(&me->multi_list);
+-		MM_ROOT(me) = NULL;
+-	}
+-
+-	if (remain)
+-		return CHE_FAIL;
+-
+-	return CHE_OK;
+-}
+-
+ void cache_release(struct map_source *map)
+ {
+ 	struct mapent_cache *mc;
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2889,7 +2889,7 @@ void set_indirect_mount_tree_catatonic(s
+ 
+ 			/* Only need to set offset mounts catatonic */
+ 			if (IS_MM(me) && IS_MM_ROOT(me))
+-				set_multi_mount_tree_catatonic(ap, me);
++				set_offset_tree_catatonic(ap, me);
+ next:
+ 			me = cache_enumerate(mc, me);
+ 		}
+@@ -2909,7 +2909,7 @@ void set_direct_mount_tree_catatonic(str
+ {
+ 	/* Set offset mounts catatonic for this mapent */
+ 	if (IS_MM(me) && IS_MM_ROOT(me))
+-		set_multi_mount_tree_catatonic(ap, me);
++		set_offset_tree_catatonic(ap, me);
+ 	set_mount_catatonic(ap, me, me->ioctlfd);
+ }
+ 
+--- autofs-5.1.4.orig/modules/lookup_program.c
++++ autofs-5.1.4/modules/lookup_program.c
+@@ -676,7 +676,7 @@ int lookup_mount(struct autofs_point *ap
+ 			me = cache_lookup_distinct(mc, name);
+ 			if (me) {
+ 				if (IS_MM(me))
+-					cache_delete_offset_list(mc, name);
++					tree_mapent_delete_offsets(mc, name);
+ 				cache_delete(mc, name);
+ 			}
+ 			cache_unlock(mc);
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -856,8 +856,8 @@ update_offset_entry(struct autofs_point
+ 	cache_writelock(mc);
+ 	ret = cache_update_offset(mc, name, m_key, m_mapent, age);
+ 
+-	if (!cache_set_offset_parent(mc, m_key))
+-		error(ap->logopt, "failed to set offset parent");
++	if (!tree_mapent_add_node(mc, name, m_key))
++		error(ap->logopt, "failed to add offset %s to tree", m_key);
+ 	cache_unlock(mc);
+ 
+ 	if (ret == CHE_DUPLICATE) {
+@@ -1136,10 +1136,7 @@ static int mount_subtree(struct autofs_p
+ 			 const char *name, char *loc, char *options, void *ctxt)
+ {
+ 	struct mapent *me;
+-	struct mapent *ro;
+-	char *mm_root, *mm_base, *mm_key;
+-	unsigned int mm_root_len;
+-	int start, ret = 0, rv;
++	int ret = 0, rv;
+ 
+ 	cache_readlock(mc);
+ 	me = cache_lookup_distinct(mc, name);
+@@ -1150,34 +1147,18 @@ static int mount_subtree(struct autofs_p
+ 
+ 	rv = 0;
+ 
+-	mm_key = MM_ROOT(me)->key;
+-
+-	if (*mm_key == '/') {
+-		mm_root = mm_key;
+-		start = strlen(mm_key);
+-	} else {
+-		start = ap->len + strlen(mm_key) + 1;
+-		mm_root = alloca(start + 3);
+-		strcpy(mm_root, ap->path);
+-		strcat(mm_root, "/");
+-		strcat(mm_root, mm_key);
+-	}
+-	mm_root_len = strlen(mm_root);
+-
+ 	if (IS_MM_ROOT(me)) {
+ 		char key[PATH_MAX + 1];
++		struct mapent *ro;
++		size_t len;
+ 
+-		if (mm_root_len + 1 > PATH_MAX) {
++		len = mount_fullpath(key, PATH_MAX, ap->path, me->key);
++		if (!len) {
+ 			warn(ap->logopt, "path loo long");
+ 			return 1;
+ 		}
+-
+-		/* name = NULL */
+-		/* destination = mm_root */
+-		mm_base = "/";
+-
+-		strcpy(key, mm_root);
+-		strcat(key, mm_base);
++		key[len] = '/';
++		key[len + 1] = 0;
+ 
+ 		/* Mount root offset if it exists */
+ 		ro = cache_lookup_distinct(me->mc, key);
+@@ -1196,7 +1177,7 @@ static int mount_subtree(struct autofs_p
+ 				warn(ap->logopt,
+ 				      MODPREFIX "failed to parse root offset");
+ 				cache_writelock(mc);
+-				cache_delete_offset_list(mc, name);
++				tree_mapent_delete_offsets(mc, name);
+ 				cache_unlock(mc);
+ 				return 1;
+ 			}
+@@ -1211,10 +1192,10 @@ static int mount_subtree(struct autofs_p
+ 				free(ro_loc);
+ 		}
+ 
+-		if ((ro && rv == 0) || rv <= 0) {
+-			ret = mount_multi_triggers(ap, me, mm_root, start, mm_base);
+-			if (ret == -1) {
+-				cleanup_multi_triggers(ap, me, mm_root, start, mm_base);
++		if (rv <= 0) {
++			ret = tree_mapent_mount_offsets(me, 1);
++			if (!ret) {
++				tree_mapent_cleanup_offsets(me);
+ 				cache_unlock(mc);
+ 				error(ap->logopt, MODPREFIX
+ 					 "failed to mount offset triggers");
+@@ -1225,39 +1206,14 @@ static int mount_subtree(struct autofs_p
+ 		int loclen = strlen(loc);
+ 		int namelen = strlen(name);
+ 
+-		/* name = mm_root + mm_base */
+-		/* destination = mm_root + mm_base = name */
+-		mm_base = &me->key[start];
+-
++		/* Mounts at nesting points must succeed for subtree
++		 * offsets to be mounted.
++		 */
+ 		rv = sun_mount(ap, name, name, namelen, loc, loclen, options, ctxt);
+ 		if (rv == 0) {
+-			ret = mount_multi_triggers(ap, me->multi, name, start, mm_base);
+-			if (ret == -1) {
+-				cleanup_multi_triggers(ap, me, name, start, mm_base);
+-				cache_unlock(mc);
+-				error(ap->logopt, MODPREFIX
+-					 "failed to mount offset triggers");
+-				return 1;
+-			}
+-		} else if (rv < 0) {
+-			char mm_root_base[PATH_MAX + 1];
+-			unsigned int mm_root_base_len = mm_root_len + strlen(mm_base) + 1;
+-	
+-			if (mm_root_base_len > PATH_MAX) {
+-				cache_unlock(mc);
+-				warn(ap->logopt, MODPREFIX "path too long");
+-				cache_writelock(mc);
+-				cache_delete_offset_list(mc, name);
+-				cache_unlock(mc);
+-				return 1;
+-			}
+-
+-			strcpy(mm_root_base, mm_root);
+-			strcat(mm_root_base, mm_base);
+-
+-			ret = mount_multi_triggers(ap, me->multi, mm_root_base, start, mm_base);
+-			if (ret == -1) {
+-				cleanup_multi_triggers(ap, me, mm_root, start, mm_base);
++			ret = tree_mapent_mount_offsets(me, 1);
++			if (!ret) {
++				tree_mapent_cleanup_offsets(me);
+ 				cache_unlock(mc);
+ 				error(ap->logopt, MODPREFIX
+ 					 "failed to mount offset triggers");
+@@ -1267,7 +1223,7 @@ static int mount_subtree(struct autofs_p
+ 	}
+ 	cache_unlock(mc);
+ 
+-	/* Mount for base of tree failed */
++	/* strict mount failed */
+ 	if (rv > 0)
+ 		return rv;
+ 
+@@ -1508,7 +1464,7 @@ dont_expand:
+ 
+ 		/* So we know we're the multi-mount root */
+ 		if (!IS_MM(me))
+-			me->multi = me;
++			MAPENT_SET_ROOT(me, tree_mapent_root(me))
+ 		else {
+ 			/*
+ 			 * The amd host mount type assumes the lookup name
+@@ -1558,7 +1514,7 @@ dont_expand:
+ 			if (!m_offset) {
+ 				warn(ap->logopt, MODPREFIX "null path or out of memory");
+ 				cache_writelock(mc);
+-				cache_delete_offset_list(mc, name);
++				tree_mapent_delete_offsets(mc, name);
+ 				cache_unlock(mc);
+ 				free(options);
+ 				free(pmapent);
+@@ -1575,7 +1531,7 @@ dont_expand:
+ 			l = parse_mapent(p, options, &myoptions, &loc, ap->logopt);
+ 			if (!l) {
+ 				cache_writelock(mc);
+-				cache_delete_offset_list(mc, name);
++				tree_mapent_delete_offsets(mc, name);
+ 				cache_unlock(mc);
+ 				free(m_offset);
+ 				free(options);
+@@ -1594,7 +1550,7 @@ dont_expand:
+ 			if (status != CHE_OK) {
+ 				warn(ap->logopt, MODPREFIX "error adding multi-mount");
+ 				cache_writelock(mc);
+-				cache_delete_offset_list(mc, name);
++				tree_mapent_delete_offsets(mc, name);
+ 				cache_unlock(mc);
+ 				free(m_offset);
+ 				free(options);

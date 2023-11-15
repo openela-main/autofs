@@ -1,0 +1,37 @@
+autofs-5.1.4 - remove unused function dump_master()
+
+From: Ian Kent <raven@themaw.net>
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/master.c |   11 -----------
+ 2 files changed, 1 insertion(+), 11 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -112,6 +112,7 @@ xx/xx/2018 autofs-5.1.5
+ - dont prune offset map entries.
+ - simplify sss source stale check.
+ - use defines for expire type.
++- remove unused function dump_master().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -1971,14 +1971,3 @@ int master_kill(struct master *master)
+ 
+ 	return 1;
+ }
+-
+-void dump_master(struct master *master)
+-{
+-	struct list_head *p, *head;
+-
+-	head = &master->mounts;
+-	list_for_each(p, head) {
+-		struct master_mapent *this = list_entry(p, struct master_mapent, list);
+-		logmsg("path %s", this->path);
+-	}
+-}

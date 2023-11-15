@@ -1,0 +1,201 @@
+autofs-5.1.6 - move submount check into conditional_alarm_add()
+
+From: Ian Kent <raven@themaw.net>
+
+The expire of submounts is driven by the top level autofs mount in the
+mount tree so an expire alarm doesn't need to set if the autofs point
+is a submount.
+
+Take that check into conditional_alarm_add().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    6 ++----
+ daemon/direct.c    |    3 +--
+ daemon/indirect.c  |    3 +--
+ daemon/state.c     |   26 +++++++++-----------------
+ lib/alarm.c        |    2 ++
+ lib/mounts.c       |    6 ++----
+ 7 files changed, 18 insertions(+), 29 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -132,6 +132,7 @@ xx/xx/2018 autofs-5.1.5
+ - use struct mnt_list mounted list for expire.
+ - remove unused function tree_get_mnt_list().
+ - only add expre alarm for active mounts.
++- move submount check into conditional_alarm_add().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1843,8 +1843,7 @@ int handle_mounts_exit(struct autofs_poi
+ 	}
+ 
+ 	if (ap->state != ST_SHUTDOWN) {
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		/* Return to ST_READY is done immediately */
+ 		st_add_task(ap, ST_READY);
+ 		if (ap->submount)
+@@ -1888,8 +1887,7 @@ int handle_mounts_exit(struct autofs_poi
+ 
+ 	/* Failed shutdown returns to ready */
+ 	warn(ap->logopt, "can't shutdown: filesystem %s still busy", ap->path);
+-	if (!ap->submount)
+-		conditional_alarm_add(ap, ap->exp_runfreq);
++	conditional_alarm_add(ap, ap->exp_runfreq);
+ 	/* Return to ST_READY is done immediately */
+ 	st_add_task(ap, ST_READY);
+ 	if (ap->submount)
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -1246,8 +1246,7 @@ static void *do_mount_direct(void *arg)
+ 
+ 		mnts_set_mounted_mount(ap, mt.name);
+ 
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 	} else {
+ 		/* TODO: get mount return status from lookup_nss_mount */
+ 		ops->send_fail(ap->logopt,
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -754,8 +754,7 @@ static void *do_mount_indirect(void *arg
+ 
+ 		mnts_set_mounted_mount(ap, mt.name);
+ 
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 	} else {
+ 		/* TODO: get mount return status from lookup_nss_mount */
+ 		ops->send_fail(ap->logopt,
+--- autofs-5.1.4.orig/daemon/state.c
++++ autofs-5.1.4/daemon/state.c
+@@ -154,7 +154,7 @@ void expire_cleanup(void *arg)
+ 			} else if (ap->submount > 1)
+ 				ap->submount = 1;
+ 
+-			if (ap->state == ST_EXPIRE && !ap->submount)
++			if (ap->state == ST_EXPIRE)
+ 				conditional_alarm_add(ap, ap->exp_runfreq);
+ 
+ 			/* FALLTHROUGH */
+@@ -172,8 +172,7 @@ void expire_cleanup(void *arg)
+ 			rv = ops->askumount(ap->logopt, ap->ioctlfd, &idle);
+ 			if (!rv && !idle && !ap->shutdown) {
+ 				next = ST_READY;
+-				if (!ap->submount)
+-					conditional_alarm_add(ap, ap->exp_runfreq);
++				conditional_alarm_add(ap, ap->exp_runfreq);
+ 				break;
+ 			}
+ 
+@@ -186,8 +185,7 @@ void expire_cleanup(void *arg)
+ 
+ 			/* Failed shutdown returns to ready */
+ 			warn(ap->logopt, "filesystem %s still busy", ap->path);
+-			if (!ap->submount)
+-				conditional_alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 			next = ST_READY;
+ 			break;
+ #endif
+@@ -577,8 +575,7 @@ static unsigned int st_readmap(struct au
+ 		error(ap->logopt, "failed to malloc readmap cond struct");
+ 		/* It didn't work: return to ready */
+ 		st_ready(ap);
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		return 0;
+ 	}
+ 
+@@ -604,8 +601,7 @@ static unsigned int st_readmap(struct au
+ 		free(ra);
+ 		/* It didn't work: return to ready */
+ 		st_ready(ap);
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		return 0;
+ 	}
+ 	ap->readmap_thread = thid;
+@@ -640,8 +636,7 @@ static unsigned int st_prepare_shutdown(
+ 	case EXP_ERROR:
+ 	case EXP_PARTIAL:
+ 		/* It didn't work: return to ready */
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+@@ -666,8 +661,7 @@ static unsigned int st_force_shutdown(st
+ 	case EXP_ERROR:
+ 	case EXP_PARTIAL:
+ 		/* It didn't work: return to ready */
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+@@ -699,8 +693,7 @@ static unsigned int st_prune(struct auto
+ 	switch (expire_proc(ap, AUTOFS_EXP_IMMEDIATE)) {
+ 	case EXP_ERROR:
+ 	case EXP_PARTIAL:
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+@@ -720,8 +713,7 @@ static unsigned int st_expire(struct aut
+ 	switch (expire_proc(ap, AUTOFS_EXP_NORMAL)) {
+ 	case EXP_ERROR:
+ 	case EXP_PARTIAL:
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+--- autofs-5.1.4.orig/lib/alarm.c
++++ autofs-5.1.4/lib/alarm.c
+@@ -187,6 +187,8 @@ int conditional_alarm_add(struct autofs_
+ {
+ 	int status;
+ 
++	if (ap->submount)
++		return 1;
+ 	if (!mnts_has_mounted_mounts(ap))
+ 		return 1;
+ 
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1921,8 +1921,7 @@ static int do_remount_direct(struct auto
+ 
+ 		info(ap->logopt, "re-connected to %s", path);
+ 
+-		if (!ap->submount)
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 	} else {
+ 		status = REMOUNT_FAIL;
+ 		info(ap->logopt, "failed to re-connect %s", path);
+@@ -1997,8 +1996,7 @@ static int do_remount_indirect(struct au
+ 
+ 			info(ap->logopt, "re-connected to %s", buf);
+ 
+-			if (!ap->submount)
+-				conditional_alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		} else {
+ 			status = REMOUNT_FAIL;
+ 			info(ap->logopt, "failed to re-connect %s", buf);

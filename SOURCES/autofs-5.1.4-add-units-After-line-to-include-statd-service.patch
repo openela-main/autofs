@@ -1,0 +1,39 @@
+autofs-5.1.4 - add units After line to include statd service
+
+From: Ian Kent <raven@themaw.net>
+
+autofs needs to ensure statd is started before any NFS mounts
+are attempted. This is because if the first NFS mount starts
+the service and the mount is an automounted directory that is
+included in the PATH used by systemctl (eg. /usr/local/bin)
+the mount cannot complete.
+
+Add rpc-statd.service to the unit "After=" line to try and
+ensure it is started before automount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                 |    1 +
+ samples/autofs.service.in |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -21,6 +21,7 @@ xx/xx/2018 autofs-5.1.5
+ - add an example fedfs master map entry to the installed master map.
+ - improve hostname lookup error logging.
+ - tiny patch for autofs typo and possible bug.
++- add units After line to include statd service.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/samples/autofs.service.in
++++ autofs-5.1.4/samples/autofs.service.in
+@@ -1,6 +1,6 @@
+ [Unit]
+ Description=Automounts filesystems on demand
+-After=network.target ypbind.service sssd.service network-online.target remote-fs.target
++After=network.target ypbind.service sssd.service network-online.target remote-fs.target rpc-statd.service rpcbind.service
+ Wants=network-online.target rpc-statd.service rpcbind.service
+ 
+ [Service]

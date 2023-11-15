@@ -1,0 +1,70 @@
+autofs-5.1.7 - remove redundant local var from sun_mount()
+
+From: Ian Kent <raven@themaw.net>
+
+The local variable mountpoint in sun_mount() is set directly from a
+passed in parameter and never changed and the source isn't changed
+either, so use the variable directly.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |   13 ++++---------
+ 2 files changed, 5 insertions(+), 9 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -42,6 +42,7 @@
+ - add mount and umount offsets functions.
+ - switch to use tree implementation for offsets.
+ - remove obsolete functions.
++- remove redundant local var from sun_mount().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -530,7 +530,6 @@ static int sun_mount(struct autofs_point
+ 	int nonstrict = 1;
+ 	int use_weight_only = ap->flags & MOUNT_FLAG_USE_WEIGHT_ONLY;
+ 	int rv, cur_state;
+-	char *mountpoint;
+ 	char *what;
+ 	char *type;
+ 
+@@ -623,9 +622,6 @@ static int sun_mount(struct autofs_point
+ 		}
+ 	}
+ 
+-	mountpoint = alloca(namelen + 1);
+-	sprintf(mountpoint, "%.*s", namelen, name);
+-
+ 	type = ap->entry->maps->type;
+ 	if (type && !strcmp(type, "hosts")) {
+ 		if (options && *options != '\0') {
+@@ -700,9 +696,9 @@ static int sun_mount(struct autofs_point
+ 		debug(ap->logopt, MODPREFIX
+ 		      "mounting root %s, mountpoint %s, "
+ 		      "what %s, fstype %s, options %s",
+-		      root, mountpoint, what, fstype, options);
++		      root, name, what, fstype, options);
+ 
+-		rv = mount_nfs->mount_mount(ap, root, mountpoint, strlen(mountpoint),
++		rv = mount_nfs->mount_mount(ap, root, name, namelen,
+ 					    what, fstype, options, mount_nfs->context);
+ 	} else {
+ 		if (!loclen)
+@@ -722,11 +718,10 @@ static int sun_mount(struct autofs_point
+ 		debug(ap->logopt, MODPREFIX
+ 		      "mounting root %s, mountpoint %s, "
+ 		      "what %s, fstype %s, options %s",
+-		      root, mountpoint, what, fstype, options);
++		      root, name, what, fstype, options);
+ 
+ 		/* Generic mount routine */
+-		rv = do_mount(ap, root, mountpoint, strlen(mountpoint), what, fstype,
+-			      options);
++		rv = do_mount(ap, root, name, namelen, what, fstype, options);
+ 	}
+ 	pthread_setcancelstate(cur_state, NULL);
+ 

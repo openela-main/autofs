@@ -1,0 +1,134 @@
+autofs-5.1.5 - move unlink_mount_tree() to lib/mounts.c
+
+From: Ian Kent <raven@themaw.net>
+
+Both daemon/direct.c and daemon/indirect.c use the same function to
+lazy umount a list of mounts, move that function to lib/mounts.c.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG         |    1 +
+ daemon/direct.c   |    2 --
+ daemon/indirect.c |   34 ----------------------------------
+ include/mounts.h  |    1 +
+ lib/mounts.c      |   35 +++++++++++++++++++++++++++++++++++
+ 5 files changed, 37 insertions(+), 36 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -71,6 +71,7 @@ xx/xx/2018 autofs-5.1.5
+ - refactor unlink_active_mounts() in direct.c.
+ - don't use tree_is_mounted() for mounted checks.
+ - use single unlink_umount_tree() for both direct and indirect mounts.
++- move unlink_mount_tree() to lib/mounts.c.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -49,8 +49,6 @@ pthread_key_t key_mnt_direct_params;
+ pthread_key_t key_mnt_offset_params;
+ pthread_once_t key_mnt_params_once = PTHREAD_ONCE_INIT;
+ 
+-int unlink_mount_tree(struct autofs_point *ap, struct mnt_list *mnts);
+-
+ static void key_mnt_params_destroy(void *arg)
+ {
+ 	struct mnt_params *mp;
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -40,40 +40,6 @@
+ /* Attribute to create detached thread */
+ extern pthread_attr_t th_attr_detached;
+ 
+-int unlink_mount_tree(struct autofs_point *ap, struct mnt_list *mnts)
+-{
+-	struct mnt_list *this;
+-	int rv, ret;
+-
+-	ret = 1;
+-	this = mnts;
+-	while (this) {
+-		if (this->flags & MNTS_AUTOFS)
+-			rv = umount2(this->mp, MNT_DETACH);
+-		else
+-			rv = spawn_umount(ap->logopt, "-l", this->mp, NULL);
+-		if (rv == -1) {
+-			debug(ap->logopt,
+-			      "can't unlink %s from mount tree", this->mp);
+-
+-			switch (errno) {
+-			case EINVAL:
+-				warn(ap->logopt,
+-				      "bad superblock or not mounted");
+-				break;
+-
+-			case ENOENT:
+-			case EFAULT:
+-				ret = 0;
+-				warn(ap->logopt, "bad path for mount");
+-				break;
+-			}
+-		}
+-		this = this->next;
+-	}
+-	return ret;
+-}
+-
+ static int do_mount_autofs_indirect(struct autofs_point *ap, const char *root)
+ {
+ 	const char *str_indirect = mount_type_str(t_indirect);
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -100,6 +100,7 @@ int ext_mount_add(struct list_head *, co
+ int ext_mount_remove(struct list_head *, const char *);
+ int ext_mount_inuse(const char *);
+ struct mnt_list *get_mnt_list(const char *path, int include);
++int unlink_mount_tree(struct autofs_point *ap, struct mnt_list *mnts);
+ void free_mnt_list(struct mnt_list *list);
+ int is_mounted(const char *mp, unsigned int type);
+ void tree_free_mnt_tree(struct mnt_list *tree);
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -881,6 +881,41 @@ local_getmntent_r(FILE *tab, struct mnte
+ 	return mnt;
+ }
+ 
++int unlink_mount_tree(struct autofs_point *ap, struct mnt_list *mnts)
++{
++	struct mnt_list *this;
++	int rv, ret;
++
++	ret = 1;
++	this = mnts;
++	while (this) {
++		if (this->flags & MNTS_AUTOFS)
++			rv = umount2(this->mp, MNT_DETACH);
++		else
++			rv = spawn_umount(ap->logopt, "-l", this->mp, NULL);
++		if (rv == -1) {
++			debug(ap->logopt,
++			      "can't unlink %s from mount tree", this->mp);
++
++			switch (errno) {
++			case EINVAL:
++				warn(ap->logopt,
++				      "bad superblock or not mounted");
++				break;
++
++			case ENOENT:
++			case EFAULT:
++				ret = 0;
++				warn(ap->logopt, "bad path for mount");
++				break;
++			}
++		}
++		this = this->next;
++	}
++
++	return ret;
++}
++
+ /*
+  * Get list of mounts under path in longest->shortest order
+  */

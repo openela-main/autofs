@@ -1,0 +1,49 @@
+autofs-5.1.5 - fix hesiod string check in master_parse()
+
+From: Ian Kent <raven@themaw.net>
+
+When map source is specified in a master map entry, checking if
+map type is hesiod in master_parse() will generate a SEGV if a
+parser type is not also present becuase tmp will be NULL in this
+case.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ lib/master_parse.y |    8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -37,6 +37,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix incorrect locking in sss lookup.
+ - fix amd parser opts option handling.
+ - better handle hesiod support not built in.
++- fix hesiod string check in master_parse().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/master_parse.y
++++ autofs-5.1.4/lib/master_parse.y
+@@ -172,8 +172,8 @@ line:
+ 		if ((tmp = strchr($2, ',')))
+ 			*tmp++ = '\0';
+ #ifndef WITH_HESIOD
+-		/* Map type or or map type parser is hesiod */
+-		if (!strcmp($2, "hesiod") || !strcmp(tmp, "hesiod")) {
++		/* Map type or map type parser is hesiod */
++		if (!strcmp($2, "hesiod") || (tmp && !strcmp(tmp, "hesiod"))) {
+ 			master_error("hesiod support not built in");
+ 			local_free_vars();
+ 			YYABORT;
+@@ -360,8 +360,8 @@ map:	PATH
+ 		if ((tmp = strchr($1, ',')))
+ 			*tmp++ = '\0';
+ #ifndef WITH_HESIOD
+-		/* Map type or or map type parser is hesiod */
+-		if (!strcmp($1, "hesiod") || !strcmp(tmp, "hesiod")) {
++		/* Map type or map type parser is hesiod */
++		if (!strcmp($1, "hesiod") || (tmp && !strcmp(tmp, "hesiod"))) {
+ 			master_error("hesiod support not built in");
+ 			local_free_vars();
+ 			YYABORT;

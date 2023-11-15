@@ -1,0 +1,133 @@
+autofs-5.1.6 - sss introduce calculate_retry_count() function
+
+From: Ian Kent <raven@themaw.net>
+
+Add a function calculate_retry_count() to consolidate the calculation
+of the retry count into a single location.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |   62 ++++++++++++++++++++++++++++++--------------------
+ 2 files changed, 38 insertions(+), 25 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 434e23d..4d83df2 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -102,6 +102,7 @@ xx/xx/2018 autofs-5.1.5
+ - improve sss setautomntent() error handling.
+ - refactor sss getautomntent().
+ - improve sss getautomntent() error handling.
++- sss introduce calculate_retry_count() function.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/modules/lookup_sss.c b/modules/lookup_sss.c
+index f366b48..29666a3 100644
+--- a/modules/lookup_sss.c
++++ b/modules/lookup_sss.c
+@@ -249,14 +249,9 @@ static unsigned int proto_version(struct lookup_context *ctxt)
+ 	return proto_version;
+ }
+ 
+-static int setautomntent_wait(unsigned int logopt,
+-			      struct lookup_context *ctxt, void **sss_ctxt)
++static unsigned int calculate_retry_count(struct lookup_context *ctxt)
+ {
+-	unsigned int retries;
+-	unsigned int retry = 0;
+-	int ret = 0;
+-
+-	*sss_ctxt = NULL;
++	int retries;
+ 
+ 	retries = defaults_get_sss_master_map_wait();
+ 
+@@ -264,14 +259,37 @@ static int setautomntent_wait(unsigned int logopt,
+ 	 * configuration give it a sensible value since we
+ 	 * want to wait for a host that's down in case it
+ 	 * comes back up.
++	 *
++	 * Use the sss_master_map_wait configuration option
++	 * for the time to wait when reading a dependednt map
++	 * or performing a key lookup too.
+ 	 */
+ 	if (retries <= 0) {
+ 		/* Protocol version 0 cant't tell us about
+-		 * a host being down, return not found.
++		 * a host being down, return 0 for retries.
+ 		 */
+ 		if (proto_version(ctxt) == 0)
+-			return ENOENT;
+-		retries = 10;
++			retries = 0;
++		else
++			retries = 10;
++	}
++	return retries;
++}
++
++static int setautomntent_wait(unsigned int logopt,
++			      struct lookup_context *ctxt, void **sss_ctxt)
++{
++	unsigned int retries;
++	unsigned int retry = 0;
++	int ret = 0;
++
++	*sss_ctxt = NULL;
++
++	retries = calculate_retry_count(ctxt);
++	if (retries == 0) {
++		if (proto_version(ctxt) == 0)
++			return EINVAL;
++		return ENOENT;
+ 	}
+ 
+ 	warn(logopt,
+@@ -345,6 +363,9 @@ static int setautomntent(unsigned int logopt,
+ 			}
+ 			if (ret == ETIMEDOUT)
+ 				goto error;
++			/* sss proto version 0 and sss timeout not set */
++			if (ret == EINVAL)
++				goto free;
+ 			if (ret == ENOENT) {
+ 				err = NSS_STATUS_NOTFOUND;
+ 				goto free;
+@@ -385,21 +406,11 @@ static int getautomntent_wait(unsigned int logopt,
+ 	unsigned int retry = 0;
+ 	int ret = 0;
+ 
+-	retries = defaults_get_sss_master_map_wait();
+-
+-	/* Use the sss_master_map_wait configuration option
+-	 * for the time to wait when reading a map too. If
+-	 * it isn't set in the antofs configuration give it
+-	 * a sensible value since we want to wait for a host
+-	 * that's down in case it comes back up.
+-	 */
+-	if (retries <= 0) {
+-		/* Protocol version 0 cant't tell us about
+-		 * a host being down, return not found.
+-		 */
++	retries = calculate_retry_count(ctxt);
++	if (retries == 0) {
+ 		if (proto_version(ctxt) == 0)
+-			return ENOENT;
+-		retries = 10;
++			return EINVAL;
++		return ENOENT;
+ 	}
+ 
+ 	warn(logopt,
+@@ -483,7 +494,8 @@ static int getautomntent(unsigned int logopt,
+ 			}
+ 			if (ret == ETIMEDOUT)
+ 				goto error;
+-			if (ret == ENOENT) {
++			/* sss proto version 0 and sss timeout not set => EINVAL */
++			if (ret == ENOENT || ret == EINVAL) {
+ 				err = NSS_STATUS_NOTFOUND;
+ 				if (count)
+ 					err = NSS_STATUS_SUCCESS;

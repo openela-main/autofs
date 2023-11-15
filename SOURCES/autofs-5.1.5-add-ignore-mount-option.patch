@@ -1,0 +1,90 @@
+autofs-5.1.5 - add ignore mount option
+
+From: Ian Kent <raven@themaw.net>
+
+Add mount option "ignore", if the kernel supports it, as an
+indicator to applications to ignore the mount entry.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/direct.c     |   10 ++++++++++
+ daemon/indirect.c   |   10 ++++++++++
+ include/automount.h |    3 +++
+ lib/master.c        |    4 ++--
+ 5 files changed, 26 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -424,6 +424,16 @@ int do_mount_autofs_direct(struct autofs
+ 				mp->options = tmp;
+ 			}
+ 		}
++
++		if ((ap->flags & MOUNT_FLAG_IGNORE) &&
++		    ((get_kver_major() == 5 && get_kver_minor() > 4) ||
++		     (get_kver_major() > 5))) {
++			char *tmp = realloc(mp->options, strlen(mp->options) + 7);
++			if (tmp) {
++				strcat(tmp, ",ignore");
++				mp->options = tmp;
++			}
++		}
+ 	}
+ 
+ 	/* In case the directory doesn't exist, try to mkdir it */
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -133,6 +133,16 @@ static int do_mount_autofs_indirect(stru
+ 		}
+ 	}
+ 
++	if ((ap->flags & MOUNT_FLAG_IGNORE) &&
++	    ((get_kver_major() == 5 && get_kver_minor() > 4) ||
++	     (get_kver_major() > 5))) {
++		char *tmp = realloc(options, strlen(options) + 7);
++		if (tmp) {
++			strcat(tmp, ",ignore");
++			options = tmp;
++		}
++	}
++
+ 	/* In case the directory doesn't exist, try to mkdir it */
+ 	if (mkdir_path(root, mp_mode) < 0) {
+ 		if (errno != EEXIST && errno != EROFS) {
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -556,6 +556,9 @@ struct kernel_mod_version {
+ /* Use strict expire semantics if requested and kernel supports it */
+ #define MOUNT_FLAG_STRICTEXPIRE		0x0400
+ 
++/* Indicator for applications to ignore the mount entry */
++#define MOUNT_FLAG_IGNORE		0x0800
++
+ struct autofs_point {
+ 	pthread_t thid;
+ 	char *path;			/* Mount point name */
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -101,9 +101,9 @@ int master_add_autofs_point(struct maste
+ 		ap->negative_timeout = global_negative_timeout;
+ 	ap->exp_timeout = defaults_get_timeout();
+ 	ap->exp_runfreq = 0;
+-	ap->flags = 0;
++	ap->flags = MOUNT_FLAG_IGNORE;
+ 	if (ghost)
+-		ap->flags = MOUNT_FLAG_GHOST;
++		ap->flags |= MOUNT_FLAG_GHOST;
+ 
+ 	if (nobind)
+ 		ap->flags |= MOUNT_FLAG_NOBIND;
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -60,6 +60,7 @@ xx/xx/2018 autofs-5.1.5
+ - remove a couple of old debug messages.
+ - fix amd entry memory leak.
+ - fix unlink_mount_tree() not umounting mounts.
++- add ignore mount option.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.

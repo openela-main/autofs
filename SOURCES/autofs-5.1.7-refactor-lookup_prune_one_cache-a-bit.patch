@@ -1,0 +1,71 @@
+autofs-5.1.7 - refactor lookup_prune_one_cache() a bit
+
+From: Ian Kent <raven@themaw.net>
+
+Coverity: use: Using an unreliable value of "me" inside the second locked
+	  section.
+
+Change lookup_prune_one_cache() a little, move the location the next
+key is set (before releasing the lock) and add a comment explaining
+why we don't care about the side effects of the read lock release/
+write lock aquire/write lock release/read lock reaquire.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |   20 +++++++++++++++++++-
+ 2 files changed, 20 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -63,6 +63,7 @@
+ - fix arg not used in error print.
+ - fix missing lock release in mount_subtree().
+ - fix double free in parse_mapent().
++- refactor lookup_prune_one_cache() a bit.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/lookup.c
++++ autofs-5.1.4/daemon/lookup.c
+@@ -1383,7 +1383,6 @@ void lookup_prune_one_cache(struct autof
+ 		}
+ 
+ 		key = strdup(me->key);
+-		me = cache_enumerate(mc, me);
+ 		/* Don't consider any entries with a wildcard */
+ 		if (!key || strchr(key, '*')) {
+ 			if (key)
+@@ -1430,6 +1429,7 @@ void lookup_prune_one_cache(struct autof
+ 		if (valid)
+ 			cache_unlock(valid->mc);
+ 
++		me = cache_enumerate(mc, me);
+ 		if (me)
+ 			next_key = strdup(me->key);
+ 
+@@ -1464,6 +1464,24 @@ void lookup_prune_one_cache(struct autof
+ next:
+ 		cache_readlock(mc);
+ 		if (next_key) {
++			/* The lock release and reaquire above can mean
++			 * a number of things could happen.
++			 *
++			 * First, mapents could be added between the
++			 * current mapent and the mapent of next_key.
++			 * Don't care about that because there's no
++			 * need to prune newly added entries.
++			 *
++			 * Second, the next mapent data could have
++			 * changed. Don't care about that either since
++			 * we are looking to prune stale map entries
++			 * and don't care when they become stale.
++			 *
++			 * Finally, the mapent of next_key could have
++			 * gone away. Again don't care about this either,
++			 * the loop will exit prematurely so just wait
++			 * until the next prune and try again.
++			 */
+ 			me = cache_lookup_distinct(mc, next_key);
+ 			free(next_key);
+ 		}

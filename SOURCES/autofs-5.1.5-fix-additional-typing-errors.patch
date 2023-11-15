@@ -1,0 +1,383 @@
+autofs-5.1.5 - fix additional typing errors
+
+From: Andreas P <nurgrak@gmail.com>
+
+Fix some more typing errors.
+imk: added changes discussed on mailing list.
+
+Signed-off-by: Andreas P <nurgrak@gmail.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ INSTALL                        |    2 +-
+ README.replicated-server       |    2 +-
+ man/auto.master.5.in           |   14 +++++++-------
+ man/autofs.5                   |    9 ++++-----
+ man/autofs.conf.5.in           |   29 ++++++++++++++---------------
+ man/autofs_ldap_auth.conf.5.in |    2 +-
+ man/automount.8                |    2 +-
+ modules/lookup_ldap.c          |    4 ++--
+ modules/replicated.c           |    4 ++--
+ redhat/autofs.conf.default.in  |   14 +++++++-------
+ redhat/autofs.sysconfig        |    2 +-
+ samples/autofs.conf.default.in |   10 +++++-----
+ 13 files changed, 47 insertions(+), 48 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -113,6 +113,7 @@ xx/xx/2018 autofs-5.1.5
+ - simplify sss source stale check.
+ - use defines for expire type.
+ - remove unused function dump_master().
++- fix additional typing errors.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/INSTALL
++++ autofs-5.1.4/INSTALL
+@@ -119,7 +119,7 @@ For example, Fedora Core 4 kernel packag
+ would use the 2.6.12 patch because it applies the 2.6.12 release
+ candidate revision 6 patch. But the autofs patch doesn't apply
+ because the rpm also applies a patch somewhere that changes one
+-area the the patch also changes but this change is not present
++area the patch also changes but this change is not present
+ in the 2.6.12 release kernel.
+ 
+ On the other hand, Fedora Core 3 kernel 2.6.12-1.1381_FC3
+--- autofs-5.1.4.orig/README.replicated-server
++++ autofs-5.1.4/README.replicated-server
+@@ -34,7 +34,7 @@ the following selection rules.
+      - PROXIMITY_OTHER, host is on a network not directlty
+        reachable through a local interface.
+   
+-2) NFS version and protocol is selected by caclculating the largest
++2) NFS version and protocol is selected by calculating the largest
+    number of hosts supporting an NFS version and protocol that
+    have the closest proximity. These hosts are added to the list
+    in response time order. Hosts may have a corresponding weight
+--- autofs-5.1.4.orig/man/auto.master.5.in
++++ autofs-5.1.4/man/auto.master.5.in
+@@ -211,12 +211,12 @@ due to application accesses triggered by
+ This option allows mount propagation of bind mounts to be set to
+ either \fIslave\fP or \fIprivate\fP. This option may be needed when using
+ multi-mounts that have bind mounts that bind to a file system that is
+-propagation shared. This is becuase the bind mount will have the same
++propagation shared. This is because the bind mount will have the same
+ properties as its target which causes problems for offset mounts. When
+ this happens an unwanted offset mount is propagated back to the target
+ file system resulting in a deadlock when attempting to access the offset.
+-This option is a an autofs pseudo mount option that can be used in the
+-master map only. By default bind mounts will inherit the mount propagation
++This option is an autofs pseudo mount option that can be used in the
++master map only. By default, bind mounts will inherit the mount propagation
+ of the target file system.
+ .TP
+ .I "\-r, \-\-random-multimount-selection"
+@@ -261,7 +261,7 @@ accessing /net/myserver will mount expor
+ /net/myserver.
+ .P
+ NOTE: mounts done from a hosts map will be mounted with the "nosuid,nodev,intr" options
+-unless overridden by explicily specifying the "suid", "dev" or "nointr" options in the
++unless overridden by explicitly specifying the "suid", "dev" or "nointr" options in the
+ master map entry.
+ .SH LDAP MAPS
+ If the map type \fBldap\fP is specified the mapname is of the form
+@@ -277,7 +277,7 @@ configuration, in which case the map nam
+ .P
+ If no schema is set in the autofs configuration then autofs will check
+ each of the commonly used schema for a valid entry and if one is found
+-it will used for subsequent lookups.
++it will be used for subsequent lookups.
+ .P
+ There are three common schemas in use:
+ .TP
+@@ -351,7 +351,7 @@ connection is to be used then the client
+ locations must also be configured within the LDAP client.
+ .P
+ In OpenLDAP these may be configured in the \fBldap.conf\fP file or in the
+-per-user configuration. For example it may be sensible to use the system
++per-user configuration. For example, it may be sensible to use the system
+ wide configuration for the location of the Certificate Authority certificate
+ and set the location of the client certificate and private key
+ in the per-user configuration. The location of these files and the configuration
+@@ -399,5 +399,5 @@ configuration will be used to locate the
+ .BR autofs_ldap_auth.conf (5).
+ .SH AUTHOR
+ This manual page was written by Christoph Lameter <chris@waterf.org>,
+-for the Debian GNU/Linux system.  Edited by <hpa@transmeta.com> and
++for the Debian GNU/Linux system. Edited by <hpa@transmeta.com> and
+ Ian Kent <raven@themaw.net> .
+--- autofs-5.1.4.orig/man/autofs.5
++++ autofs-5.1.4/man/autofs.5
+@@ -64,7 +64,6 @@ can't be mounted.
+ .br
+ is used to make the weight the sole factor in selecting a server when multiple
+ servers are present in a map entry.
+-and
+ .TP
+ .B \-no-use-weight-only
+ .br
+@@ -192,7 +191,7 @@ SHOST	Short hostname (domain part remove
+ .sp
+ If a program map is used these standard environment variables will have
+ a prefix of "AUTOFS_" to prevent interpreted languages like python from
+-being able to load and execute arbitray code from a user home directory.
++being able to load and execute arbitrary code from a user home directory.
+ .RE
+ .sp
+ Additional entries can be defined with the \-Dvariable=Value map-option to
+@@ -293,10 +292,10 @@ may be negated with the \fB!\fP.
+ For a \fBlocation\fP to be selected for a mount attempt all of its \fBselectors\fP
+ must evaluate to true. If a \fBlocation\fP is selected for a mount attempt
+ and succeeds the lookup is completed and returns success. If the mount
+-attempt fails the proceedure continues with the next \fBlocation\fP until
++attempt fails the procedure continues with the next \fBlocation\fP until
+ they have all been tried.
+ 
+-In addition some \fBselectors\fP take no argumenets, some one argument
++In addition, some \fBselectors\fP take no arguments, some one argument
+ and others optionally take two arguments.
+ 
+ The \fBselectors\fP that take no arguments are:
+@@ -584,7 +583,7 @@ In the first line we have an NFS remote
+ another nfs mount for the exported directory /work/util from host zeus.
+ This would be mounted on /test/util.
+ 
+-Finally we have an example of the use of the \fBsublink\fP option. In
++Finally, we have an example of the use of the \fBsublink\fP option. In
+ this case the filesystem bilbo:/shared would be mounted on a path
+ external the automount directory (under the direcory given by
+ configuration option auto_dir) and the path /test/local either
+--- autofs-5.1.4.orig/man/autofs.conf.5.in
++++ autofs-5.1.4/man/autofs.conf.5.in
+@@ -91,7 +91,7 @@ set default log level "none", "verbose"
+ .B force_standard_program_map_env
+ .br
+ override the use of a prefix with standard environment variables when a
+-program map is executed. Since program maps are run as the privileded
++program map is executed. Since program maps are run as the privileged
+ user setting these standard environment variables opens automount(8) to
+ potential user privilege escalation when the program map is written in a
+ language that can load components from, for example, a user home directory
+@@ -110,16 +110,15 @@ and a direct map with 8000 entries would
+ containing an average of 8 entries, which should be acceptable.
+ 
+ However, if excessive CPU usage is observed during automount lookups
+-increasing this option can reduce the CPU overhead considerably becuase
++increasing this option can reduce the CPU overhead considerably because
+ it reduces the length of the search chains.
+ 
+ Note that the number of entries in a map doesn't necessarily relate
+ to the number of entries used in the map entry cache.
+ 
+-There are three distinct cases, direct maps and indirect maps that
+-use the "browse" option must be read in their entirity at program
+-start so, in these two cases the map size does retate directly to
+-the map entry cache size.
++There are two distinct cases where the map hash table can make a
++significant difference, direct maps and indirect maps that use the
++"browse" option.
+ 
+ For indirect maps that do not use the "browse" option entries are
+ added to the map entry cache at lookup so the number of active cache
+@@ -174,7 +173,7 @@ by the number of retries that would be u
+ .B use_mount_request_log_id
+ .br
+ Set whether to use a mount request log id so that log entries for specific
+-mount requests can be easily identified in logs that have multiple conncurrent
++mount requests can be easily identified in logs that have multiple concurrent
+ requests. Default is don't use mount request log ids.
+ .SS LDAP Configuration
+ .P
+@@ -183,7 +182,7 @@ Configuration settings available are:
+ .B ldap_timeout
+ .br
+ Set the network response timeout (default 8).
+-Set timeout value for the synchronous API  calls. The default is the LDAP
++Set timeout value for the synchronous API calls. The default is the LDAP
+ library default of an infinite timeout.
+ .TP
+ .B ldap_network_timeout
+@@ -323,7 +322,7 @@ cleaned on re-load, which is done when m
+ so these configuration entries are not used by autofs. An
+ exception to this is the case where the map is large. In this
+ case it may be necessary to read the whole map at startup even if
+-browsing is is not enabled. Adding the cache:=all option to
++browsing is not enabled. Adding the cache:=all option to
+ map_options can be used to for this.
+ .TP
+ .B localhost_address
+@@ -390,14 +389,14 @@ and that will be done.
+ Allow map keys to be shown in directory listings. This option
+ can have values of "yes" or "no". The default is "no". A variation
+ of this option, "browsable", can be used as a pseudo mount option
+-in type "auto" map entries to provide provide browsing funtionality
++in type "auto" map entries to provide browsing functionality
+ in sub-mounts. The amd "browsable_dirs = full" option cannot be
+ implemented within the current autofs framework and is not supported.
+ .TP
+ .B exec_map_timeout
+ .br
+-A timeout is not currently used for for program maps, might be
+-implemented.
++A timeout is not currently used for program maps but this might be
++implemented in the future.
+ .TP
+ .B tag
+ .br
+@@ -473,7 +472,7 @@ its official host name.
+ .TP
+ .B domain_strip
+ .br
+-If set to "yes" the domain name part of the host is strippped
++If set to "yes" the domain name part of the host is stripped
+ when normalizing hostnames. This can be useful when using of
+ the same maps in a multiple domain environment.
+ .TP
+@@ -497,8 +496,8 @@ that is used for queries if ldap is to b
+ .B ldap_hostports
+ .br
+ This option has no default value set. It must be set to the URI
+-of the LDAP server to be used for lookups wheni ldap is used a
+-map source. It may contain a comma or space separated list of
++of the LDAP server to be used for lookups when ldap is used as
++a map source. It may contain a comma or space separated list of
+ LDAP URIs.
+ .TP
+ .B hesiod_base
+--- autofs-5.1.4.orig/man/autofs_ldap_auth.conf.5.in
++++ autofs-5.1.4/man/autofs_ldap_auth.conf.5.in
+@@ -56,7 +56,7 @@ required in order to perform ldap querie
+ sasl authenticated connections will be allowed. If it is set to no then
+ authentication is not needed for ldap server connections. If it is set to
+ autodetect then the ldap server will be queried to establish a suitable sasl
+-authentication  mechanism. If no suitable mechanism can be found, connections
++authentication mechanism. If no suitable mechanism can be found, connections
+ to the ldap server are made without authentication. Finally, if it is set to
+ simple, then simple authentication will be used instead of SASL.
+ .TP
+--- autofs-5.1.4.orig/man/automount.8
++++ autofs-5.1.4/man/automount.8
+@@ -89,7 +89,7 @@ that would be used by autofs for the who
+ .TP
+ .I "\-O, \-\-global-options"
+ Allows the specification of global mount options used for all master
+-map entries. These options will either replace or be appened to options
++map entries. These options will either replace or be appended to options
+ given in a master map entry depending on the APPEND_OPTIONS configuration
+ setting.
+ .TP
+--- autofs-5.1.4.orig/modules/lookup_ldap.c
++++ autofs-5.1.4/modules/lookup_ldap.c
+@@ -1320,11 +1320,11 @@ auth_fail:
+ 		ret |= get_property(logopt, root, "external_key",  &extern_key);
+ 		/*
+ 		 * For EXTERNAL auth to function we need a client certificate
+-		 * and and certificate key. The ca certificate used to verify
++		 * and certificate key. The ca certificate used to verify
+ 		 * the server certificate must also be set correctly in the
+ 		 * global configuration as the connection must be encrypted
+ 		 * and the server and client certificates must have been
+-		 * verified for the EXTERNAL method to be offerred by the
++		 * verified for the EXTERNAL method to be offered by the
+ 		 * server. If the cert and key have not been set in the autofs
+ 		 * configuration they must be set in the ldap rc file.
+ 		 */
+--- autofs-5.1.4.orig/modules/replicated.c
++++ autofs-5.1.4/modules/replicated.c
+@@ -24,11 +24,11 @@
+  *        - PROXIMITY_OTHER, host is on a network not directlty
+  *          reachable through a local interface.
+  *
+- *   2) NFS version and protocol is selected by caclculating the largest
++ *   2) NFS version and protocol is selected by calculating the largest
+  *      number of hosts supporting an NFS version and protocol that
+  *      have the closest proximity. These hosts are added to the list
+  *      in response time order. Hosts may have a corresponding weight
+- *      which essentially increaes response time and so influences the
++ *      which essentially increases response time and so influences the
+  *      host order.
+  *
+  *   3) Hosts at further proximity that support the selected NFS version
+--- autofs-5.1.4.orig/redhat/autofs.conf.default.in
++++ autofs-5.1.4/redhat/autofs.conf.default.in
+@@ -79,7 +79,7 @@ mount_nfs_default_protocol = 4
+ #			are run as the privileded user this opens
+ #			automount(8) to potential user privilege
+ #			escalation when the program map is written
+-#			in a language that  can load components from,
++#			in a language that can load components from,
+ #			for example, a user home directory.
+ #
+ # force_standard_program_map_env = no
+@@ -87,7 +87,7 @@ mount_nfs_default_protocol = 4
+ # use_mount_request_log_id - Set whether to use a mount request log
+ #			id so that log entries for specific mount
+ #			requests can be easily identified in logs
+-#			that have multiple conncurrent requests.
++#			that have multiple concurrent requests.
+ #
+ #use_mount_request_log_id = no
+ #
+@@ -419,10 +419,10 @@ dismount_interval = 300
+ # appears to work reasonably well most of the time without the
+ # update).
+ #
+-# autofs_use_lofs = yes
++#autofs_use_lofs = yes
+ #
+ # Several configuration options can be set per mount point.
+-# In particulr map_type, map_name, map_defaults, search_path,
++# In particular map_type, map_name, map_defaults, search_path,
+ # browsable_dirs, dismount_interval and selectors_in_defaults
+ # (not all of which are currently implemented, see above).
+ #
+@@ -431,6 +431,6 @@ dismount_interval = 300
+ # master map entry and the format will be inherited for type
+ # "auto" mounts.
+ #
+-# [ /expamle/mount ]
+-# dismount_interval = 60
+-# map_type = nis
++#[ /example/mount ]
++#dismount_interval = 60
++#map_type = nis
+--- autofs-5.1.4.orig/redhat/autofs.sysconfig
++++ autofs-5.1.4/redhat/autofs.sysconfig
+@@ -1,5 +1,5 @@
+ #
+-# Init syatem options
++# Init system options
+ #
+ # If the kernel supports using the autofs miscellanous device
+ # and you wish to use it you must set this configuration option
+--- autofs-5.1.4.orig/samples/autofs.conf.default.in
++++ autofs-5.1.4/samples/autofs.conf.default.in
+@@ -78,7 +78,7 @@ browse_mode = no
+ #			are run as the privileded user this opens
+ #			automount(8) to potential user privilege
+ #			escalation when the program map is written
+-#			in a language that  can load components from,
++#			in a language that can load components from,
+ #			for example, a user home directory.
+ #
+ # force_standard_program_map_env = no
+@@ -86,7 +86,7 @@ browse_mode = no
+ # use_mount_request_log_id - Set whether to use a mount request log
+ #			id so that log entries for specific mount
+ #			requests can be easily identified in logs
+-#			that have multiple conncurrent requests.
++#			that have multiple concurrent requests.
+ #
+ #use_mount_request_log_id = no
+ #
+@@ -430,6 +430,6 @@ dismount_interval = 300
+ # master map entry and the format will be inherited for type
+ # "auto" mounts.
+ #
+-# [ /expamle/mount ]
+-# dismount_interval = 60
+-# map_type = nis
++#[ /example/mount ]
++#dismount_interval = 60
++#map_type = nis

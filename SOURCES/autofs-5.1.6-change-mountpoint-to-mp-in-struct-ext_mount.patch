@@ -1,0 +1,74 @@
+autofs-5.1.6 - change mountpoint to mp in struct ext_mount
+
+From: Ian Kent <raven@themaw.net>
+
+Use simple name mp instead of mountpoint in struct ext_mount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |   14 +++++++-------
+ 2 files changed, 8 insertions(+), 7 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -118,6 +118,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix browse dir not re-created on symlink expire.
+ - update list.h.
+ - add hashtable implementation.
++- change mountpoint to mp in struct ext_mount.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -54,7 +54,7 @@ static size_t maxgrpbuf = 0;
+ #define EXT_MOUNTS_HASH_SIZE    50
+ 
+ struct ext_mount {
+-	char *mountpoint;
++	char *mp;
+ 	unsigned int umount;
+ 	struct list_head mount;
+ 	struct list_head mounts;
+@@ -743,9 +743,9 @@ static void ext_mounts_hash_init(void)
+ 	ext_mounts_hash_init_done = 1;
+ }
+ 
+-static struct ext_mount *ext_mount_lookup(const char *mountpoint)
++static struct ext_mount *ext_mount_lookup(const char *mp)
+ {
+-	u_int32_t hval = hash(mountpoint, EXT_MOUNTS_HASH_SIZE);
++	u_int32_t hval = hash(mp, EXT_MOUNTS_HASH_SIZE);
+ 	struct list_head *p, *head;
+ 
+ 	if (!ext_mounts_hash_init_done)
+@@ -757,7 +757,7 @@ static struct ext_mount *ext_mount_looku
+ 	head = &ext_mounts_hash[hval];
+ 	list_for_each(p, head) {
+ 		struct ext_mount *this = list_entry(p, struct ext_mount, mount);
+-		if (!strcmp(this->mountpoint, mountpoint))
++		if (!strcmp(this->mp, mp))
+ 			return this;
+ 	}
+ 	return NULL;
+@@ -788,8 +788,8 @@ int ext_mount_add(struct list_head *entr
+ 	if (!em)
+ 		goto done;
+ 
+-	em->mountpoint = strdup(path);
+-	if (!em->mountpoint) {
++	em->mp = strdup(path);
++	if (!em->mp) {
+ 		free(em);
+ 		goto done;
+ 	}
+@@ -828,7 +828,7 @@ int ext_mount_remove(struct list_head *e
+ 		if (em->umount)
+ 			ret = 1;
+ 		if (list_empty(&em->mount)) {
+-			free(em->mountpoint);
++			free(em->mp);
+ 			free(em);
+ 		}
+ 	}

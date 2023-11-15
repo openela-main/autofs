@@ -1,0 +1,38 @@
+autofs-5.1.7 - add missing free in handle_mounts()
+
+From: Ian Kent <raven@themaw.net>
+
+Coverity: error[doubleFree]: Memory pointed to by 'root' is freed twice
+
+No it's not, but root isn't freed before the fatal call which crashes
+automount so add a free() before the fatal() call.
+
+It appears Coverity doesn't recognise pthread_exit() as an exit condition.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 ++
+ 2 files changed, 3 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -50,6 +50,7 @@
+ - check for offset with no mount location.
+ - remove mounts_mutex.
+ - remove unused variable from get_exports().
++- add missing free in handle_mounts().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1917,6 +1917,8 @@ void *handle_mounts(void *arg)
+ 	status = pthread_mutex_lock(&suc->mutex);
+ 	if (status) {
+ 		logerr("failed to lock startup condition mutex!");
++		if (root)
++			free(root);
+ 		fatal(status);
+ 	}
+ 

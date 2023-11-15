@@ -1,0 +1,35 @@
+autofs-5.1.6 - fix double quoting of ampersand in auto.smb as well
+
+From: Ian Kent <raven@themaw.net>
+
+The example program mount script installed to /etc/auto.smb incorrectly
+adds a quote for the & character that causes mount failures. But the
+produced map entry is already surrounded by double quotes. This may have
+been handled by mount.cifs at some point but it's failing now.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ samples/auto.smb |    1 -
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/samples/auto.smb
++++ autofs-5.1.4/samples/auto.smb
+@@ -75,7 +75,6 @@ $SMBCLIENT $smbopts -gL "$key" 2>/dev/nu
+ 		  dir = $2
+ 		  loc = $2
+ 		  # Enclose mount dir and location in quotes
+-		  gsub(/\&/,"\\\\&",loc)
+ 		  print " \\\n\t \"/" dir "\"", "\"://" key "/" loc "\""
+ 		}
+ 	END 	{ if (!first) print "\n"; else exit 1 }
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -82,6 +82,7 @@
+ - fix set open file limit.
+ - improve descriptor open error reporting.
+ - fix double quoting in auto.smb.
++- fix double quoting of ampersand in auto.smb as well.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.

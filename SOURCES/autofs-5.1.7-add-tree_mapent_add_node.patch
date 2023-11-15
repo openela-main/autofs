@@ -1,0 +1,123 @@
+autofs-5.1.7 - add tree_mapent_add_node()
+
+From: Ian Kent <raven@themaw.net>
+
+Add function tree_mapent_add_node() to the mapent tree handling
+implementation.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ include/automount.h |    1 +
+ include/mounts.h    |    1 +
+ lib/cache.c         |    5 ++---
+ lib/mounts.c        |   47 +++++++++++++++++++++++++++++++++++++++++++++++
+ 5 files changed, 52 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -33,6 +33,7 @@
+ - add a len field to struct autofs_point.
+ - make tree implementation data independent.
+ - add mapent tree implementation.
++- add tree_mapent_add_node().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -215,6 +215,7 @@ struct mapent *cache_partial_match_wild(
+ int cache_add(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_update_offset(struct mapent_cache *mc, const char *mkey, const char *key, const char *mapent, time_t age);
+ void cache_update_negative(struct mapent_cache *mc, struct map_source *ms, const char *key, time_t timeout);
++struct mapent *cache_get_offset_parent(struct mapent_cache *mc, const char *key);
+ int cache_set_offset_parent(struct mapent_cache *mc, const char *offset);
+ int cache_update(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_delete(struct mapent_cache *mc, const char *key);
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -169,6 +169,7 @@ void mnts_get_expire_list(struct list_he
+ void mnts_put_expire_list(struct list_head *mnts);
+ void mnts_set_mounted_mount(struct autofs_point *ap, const char *name, unsigned int flags);
+ struct tree_node *tree_mapent_root(struct mapent *me);
++int tree_mapent_add_node(struct mapent_cache *mc, const char *base, const char *key);
+ int unlink_mount_tree(struct autofs_point *ap, const char *mp);
+ void free_mnt_list(struct mnt_list *list);
+ int is_mounted(const char *mp, unsigned int type);
+--- autofs-5.1.4.orig/lib/cache.c
++++ autofs-5.1.4/lib/cache.c
+@@ -719,8 +719,7 @@ void cache_update_negative(struct mapent
+ }
+ 
+ 
+-static struct mapent *get_offset_parent(struct mapent_cache *mc,
+-					const char *key)
++struct mapent *cache_get_offset_parent(struct mapent_cache *mc, const char *key)
+ {
+ 	struct mapent *me;
+ 	char *parent, *tail;
+@@ -766,7 +765,7 @@ int cache_set_offset_parent(struct mapen
+ 	if (!IS_MM(this))
+ 		return 0;
+ 
+-	parent = get_offset_parent(mc, offset);
++	parent = cache_get_offset_parent(mc, offset);
+ 	if (parent)
+ 		this->parent = parent;
+ 	else
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1481,6 +1481,53 @@ static void tree_mapent_free(struct tree
+ 	n->right = NULL;
+ }
+ 
++int tree_mapent_add_node(struct mapent_cache *mc,
++			 const char *root, const char *key)
++{
++	unsigned int logopt = mc->ap->logopt;
++	struct tree_node *tree, *n;
++	struct mapent *base;
++	struct mapent *parent;
++	struct mapent *me;
++
++	base = cache_lookup_distinct(mc, root);
++	if (!base) {
++		error(logopt,
++		     "failed to find multi-mount root for key %s", key);
++		return 0;
++	}
++
++	if (MAPENT_ROOT(base) != MAPENT_NODE(base)) {
++		error(logopt,
++		     "failed to find multi-mount root of offset tree",
++		     key);
++		return 0;
++	}
++	tree = MAPENT_ROOT(base);
++
++	me = cache_lookup_distinct(mc, key);
++	if (!me) {
++		error(logopt,
++		     "failed to find key %s of multi-mount", key);
++		return 0;
++	}
++
++	n = tree_add_node(tree, me);
++	if (!n)
++		return 0;
++
++	MAPENT_SET_ROOT(me, tree)
++
++	/* Set the subtree parent */
++	parent = cache_get_offset_parent(mc, key);
++	if (!parent)
++		MAPENT_SET_PARENT(me, tree)
++	else
++		MAPENT_SET_PARENT(me, MAPENT_NODE(parent))
++
++	return 1;
++}
++
+ /* From glibc decode_name() */
+ /* Since the values in a line are separated by spaces, a name cannot
+  * contain a space.  Therefore some programs encode spaces in names

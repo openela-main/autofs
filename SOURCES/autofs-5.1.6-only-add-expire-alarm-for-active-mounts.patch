@@ -1,0 +1,334 @@
+autofs-5.1.6 - only add expire alarm for active mounts
+
+From: Ian Kent <raven@themaw.net>
+
+There's no need to add expire alarms for mount points that have no
+expirable mounts.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 
+ daemon/automount.c  |    9 +-------
+ daemon/direct.c     |    3 ++
+ daemon/indirect.c   |    3 ++
+ daemon/state.c      |   25 +++++++++++-----------
+ include/automount.h |    1 
+ include/mounts.h    |    1 
+ lib/alarm.c         |   57 ++++++++++++++++++++++++++++++++++++++++++++++++----
+ lib/mounts.c        |   19 +++++++++++++++++
+ 9 files changed, 96 insertions(+), 23 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -131,6 +131,7 @@ xx/xx/2018 autofs-5.1.5
+ - use struct mnt_list to track mounted mounts.
+ - use struct mnt_list mounted list for expire.
+ - remove unused function tree_get_mnt_list().
++- only add expre alarm for active mounts.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1844,7 +1844,7 @@ int handle_mounts_exit(struct autofs_poi
+ 
+ 	if (ap->state != ST_SHUTDOWN) {
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		/* Return to ST_READY is done immediately */
+ 		st_add_task(ap, ST_READY);
+ 		if (ap->submount)
+@@ -1889,7 +1889,7 @@ int handle_mounts_exit(struct autofs_poi
+ 	/* Failed shutdown returns to ready */
+ 	warn(ap->logopt, "can't shutdown: filesystem %s still busy", ap->path);
+ 	if (!ap->submount)
+-		alarm_add(ap, ap->exp_runfreq);
++		conditional_alarm_add(ap, ap->exp_runfreq);
+ 	/* Return to ST_READY is done immediately */
+ 	st_add_task(ap, ST_READY);
+ 	if (ap->submount)
+@@ -1952,11 +1952,6 @@ void *handle_mounts(void *arg)
+ 	suc->status = 0;
+ 	pthread_cleanup_pop(1);
+ 
+-	/* We often start several automounters at the same time.  Add some
+-	   randomness so we don't all expire at the same time. */
+-	if (!ap->submount && ap->exp_runfreq)
+-		alarm_add(ap, ap->exp_runfreq + rand() % ap->exp_runfreq);
+-
+ 	pthread_setcancelstate(cancel_state, NULL);
+ 
+ 	while (1) {
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -1245,6 +1245,9 @@ static void *do_mount_direct(void *arg)
+ 		info(ap->logopt, "mounted %s", mt.name);
+ 
+ 		mnts_set_mounted_mount(ap, mt.name);
++
++		if (!ap->submount)
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 	} else {
+ 		/* TODO: get mount return status from lookup_nss_mount */
+ 		ops->send_fail(ap->logopt,
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -753,6 +753,9 @@ static void *do_mount_indirect(void *arg
+ 		info(ap->logopt, "mounted %s", buf);
+ 
+ 		mnts_set_mounted_mount(ap, mt.name);
++
++		if (!ap->submount)
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 	} else {
+ 		/* TODO: get mount return status from lookup_nss_mount */
+ 		ops->send_fail(ap->logopt,
+--- autofs-5.1.4.orig/daemon/state.c
++++ autofs-5.1.4/daemon/state.c
+@@ -155,7 +155,7 @@ void expire_cleanup(void *arg)
+ 				ap->submount = 1;
+ 
+ 			if (ap->state == ST_EXPIRE && !ap->submount)
+-				alarm_add(ap, ap->exp_runfreq);
++				conditional_alarm_add(ap, ap->exp_runfreq);
+ 
+ 			/* FALLTHROUGH */
+ 
+@@ -173,7 +173,7 @@ void expire_cleanup(void *arg)
+ 			if (!rv && !idle && !ap->shutdown) {
+ 				next = ST_READY;
+ 				if (!ap->submount)
+-					alarm_add(ap, ap->exp_runfreq);
++					conditional_alarm_add(ap, ap->exp_runfreq);
+ 				break;
+ 			}
+ 
+@@ -187,7 +187,7 @@ void expire_cleanup(void *arg)
+ 			/* Failed shutdown returns to ready */
+ 			warn(ap->logopt, "filesystem %s still busy", ap->path);
+ 			if (!ap->submount)
+-				alarm_add(ap, ap->exp_runfreq);
++				conditional_alarm_add(ap, ap->exp_runfreq);
+ 			next = ST_READY;
+ 			break;
+ #endif
+@@ -522,9 +522,10 @@ static void *do_readmap(void *arg)
+ 		 * alarm will have been added. So add it here if there are
+ 		 * now map entries.
+ 		 */
+-		if (append_alarm && ap->exp_runfreq)
+-			alarm_add(ap, ap->exp_runfreq +
+-				  rand() % ap->exp_runfreq);
++		if (append_alarm && ap->exp_runfreq) {
++			time_t seconds = ap->exp_runfreq + rand() % ap->exp_runfreq;
++			conditional_alarm_add(ap, seconds);
++		}
+ 
+ 		pthread_cleanup_pop(1);
+ 		pthread_cleanup_pop(1);
+@@ -577,7 +578,7 @@ static unsigned int st_readmap(struct au
+ 		/* It didn't work: return to ready */
+ 		st_ready(ap);
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		return 0;
+ 	}
+ 
+@@ -604,7 +605,7 @@ static unsigned int st_readmap(struct au
+ 		/* It didn't work: return to ready */
+ 		st_ready(ap);
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		return 0;
+ 	}
+ 	ap->readmap_thread = thid;
+@@ -640,7 +641,7 @@ static unsigned int st_prepare_shutdown(
+ 	case EXP_PARTIAL:
+ 		/* It didn't work: return to ready */
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+@@ -666,7 +667,7 @@ static unsigned int st_force_shutdown(st
+ 	case EXP_PARTIAL:
+ 		/* It didn't work: return to ready */
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+@@ -699,7 +700,7 @@ static unsigned int st_prune(struct auto
+ 	case EXP_ERROR:
+ 	case EXP_PARTIAL:
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+@@ -720,7 +721,7 @@ static unsigned int st_expire(struct aut
+ 	case EXP_ERROR:
+ 	case EXP_PARTIAL:
+ 		if (!ap->submount)
+-			alarm_add(ap, ap->exp_runfreq);
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 		st_ready(ap);
+ 		return 0;
+ 
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -637,6 +637,7 @@ static inline time_t monotonic_time(time
+ /* Expire alarm handling routines */
+ int alarm_start_handler(void);
+ int alarm_add(struct autofs_point *ap, time_t seconds);
++int conditional_alarm_add(struct autofs_point *ap, time_t seconds);
+ void alarm_delete(struct autofs_point *ap);
+ 
+ #endif
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -125,6 +125,7 @@ void mnts_remove_amdmount(const char *mp
+ struct mnt_list *mnts_add_mount(struct autofs_point *ap, const char *name, unsigned int flags);
+ void mnts_remove_mount(const char *mp, unsigned int flags);
+ struct mnt_list *get_mnt_list(const char *path, int include);
++unsigned int mnts_has_mounted_mounts(struct autofs_point *ap);
+ void mnts_get_expire_list(struct list_head *mnts, struct autofs_point *ap);
+ void mnts_put_expire_list(struct list_head *mnts);
+ void mnts_set_mounted_mount(struct autofs_point *ap, const char *name);
+--- autofs-5.1.4.orig/lib/alarm.c
++++ autofs-5.1.4/lib/alarm.c
+@@ -41,7 +41,7 @@ do { \
+ } while (0)
+ 
+ /* Insert alarm entry on ordered list. */
+-int alarm_add(struct autofs_point *ap, time_t seconds)
++int __alarm_add(struct autofs_point *ap, time_t seconds)
+ {
+ 	struct list_head *head;
+ 	struct list_head *p;
+@@ -62,8 +62,6 @@ int alarm_add(struct autofs_point *ap, t
+ 	new->cancel = 0;
+ 	new->time = now + seconds;
+ 
+-	alarm_lock();
+-
+ 	head = &alarms;
+ 
+ 	/* Check if we have a pending alarm */
+@@ -97,9 +95,42 @@ int alarm_add(struct autofs_point *ap, t
+ 			fatal(status);
+ 	}
+ 
++	return 1;
++}
++
++int alarm_add(struct autofs_point *ap, time_t seconds)
++{
++	int status;
++
++	alarm_lock();
++	status = __alarm_add(ap, seconds);
+ 	alarm_unlock();
+ 
+-	return 1;
++	return status;
++}
++
++static int __alarm_exists(struct autofs_point *ap)
++{
++	struct list_head *head;
++	struct list_head *p;
++
++	head = &alarms;
++
++	if (list_empty(head))
++		return 0;
++
++	p = head->next;
++	while (p != head) {
++		struct alarm *this;
++
++		this = list_entry(p, struct alarm, list);
++		p = p->next;
++
++		if (ap == this->ap)
++			return 1;
++	}
++
++	return 0;
+ }
+ 
+ void alarm_delete(struct autofs_point *ap)
+@@ -152,6 +183,24 @@ void alarm_delete(struct autofs_point *a
+ 	return;
+ }
+ 
++int conditional_alarm_add(struct autofs_point *ap, time_t seconds)
++{
++	int status;
++
++	if (!mnts_has_mounted_mounts(ap))
++		return 1;
++
++	alarm_lock();
++	if (__alarm_exists(ap)) {
++		alarm_unlock();
++		return 1;
++	}
++	status = __alarm_add(ap, seconds);
++	alarm_unlock();
++
++	return status;
++}
++
+ static void *alarm_handler(void *arg)
+ {
+ 	struct list_head *head;
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1208,6 +1208,19 @@ void mnts_set_mounted_mount(struct autof
+ 	}
+ }
+ 
++unsigned int mnts_has_mounted_mounts(struct autofs_point *ap)
++{
++	unsigned int has_mounted_mounts = 0;
++
++	mnts_hash_mutex_lock();
++	if (list_empty(&ap->mounts))
++		goto done;
++	has_mounted_mounts = 1;
++done:
++	mnts_hash_mutex_unlock();
++	return has_mounted_mounts;
++}
++
+ struct node {
+ 	struct mnt_list *mnt;
+ 	struct node *left;
+@@ -1907,6 +1920,9 @@ static int do_remount_direct(struct auto
+ 		mnts_set_mounted_mount(ap, path);
+ 
+ 		info(ap->logopt, "re-connected to %s", path);
++
++		if (!ap->submount)
++			conditional_alarm_add(ap, ap->exp_runfreq);
+ 	} else {
+ 		status = REMOUNT_FAIL;
+ 		info(ap->logopt, "failed to re-connect %s", path);
+@@ -1980,6 +1996,9 @@ static int do_remount_indirect(struct au
+ 			mnts_set_mounted_mount(ap, buf);
+ 
+ 			info(ap->logopt, "re-connected to %s", buf);
++
++			if (!ap->submount)
++				conditional_alarm_add(ap, ap->exp_runfreq);
+ 		} else {
+ 			status = REMOUNT_FAIL;
+ 			info(ap->logopt, "failed to re-connect %s", buf);

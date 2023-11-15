@@ -1,0 +1,46 @@
+autofs-5.1.6 - fix trailing dollar sun entry expansion
+
+From: Ian Kent <raven@themaw.net>
+
+In modules/parse_sun.c:expandsunent() if we see "$ " or "$<NULL>" in a
+the entry it can't be a macro, and the value can't be quoted since '\'
+and '"' cases are handled seperately in the swicth, so treat the
+character as a valid entry character.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |   12 ++++++++++++
+ 2 files changed, 13 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -77,6 +77,7 @@ xx/xx/2018 autofs-5.1.5
+ - use local getmntent_r() in tree_make_mnt_list().
+ - fix missing initialization of autofs_point flags.
+ - fix a regression with map instance lookup.
++- fix trailing dollar sun entry expansion.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -161,6 +161,18 @@ int expandsunent(const char *src, char *
+ 				}
+ 				src = p + 1;
+ 			} else {
++				/* If the '$' is folloed by a space or NULL it
++				 * can't be a macro, and the value can't be
++				 * quoted since '\' and '"' cases are handled
++				 * in other cases, so treat the $ as a valid
++				 * map entry character.
++				 */
++				if (isblank(*src) || !*src) {
++					if (dst)
++						*dst++ = ch;
++					len++;
++					break;
++				}
+ 				p = src;
+ 				while (isalnum(*p) || *p == '_')
+ 					p++;

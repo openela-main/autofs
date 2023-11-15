@@ -1,0 +1,53 @@
+autofs-5.1.5 - use local getmntent_r in table_is_mounted()
+
+From: Ian Kent <raven@themaw.net>
+
+Use the local_getmntent_r() funtion copied from glibc in the function
+table_is_mounted() so that if glibc is changed to support the autofs
+"ignore" hint automount(8) won't be affected.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -67,6 +67,7 @@ xx/xx/2018 autofs-5.1.5
+ - use mp instead of path in mnt_list entries.
+ - always use PROC_MOUNTS to make mount lists.
+ - add glibc getmntent_r().
++- use local getmntent_r in table_is_mounted().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -999,14 +999,14 @@ static int table_is_mounted(const char *
+ 	if (!mp || !mp_len || mp_len >= PATH_MAX)
+ 		return 0;
+ 
+-	tab = open_setmntent_r(_PROC_MOUNTS);
++	tab = open_fopen_r(_PROC_MOUNTS);
+ 	if (!tab) {
+ 		char *estr = strerror_r(errno, buf, PATH_MAX - 1);
+-		logerr("setmntent: %s", estr);
++		logerr("fopen: %s", estr);
+ 		return 0;
+ 	}
+ 
+-	while ((mnt = getmntent_r(tab, &mnt_wrk, buf, PATH_MAX * 3))) {
++	while ((mnt = local_getmntent_r(tab, &mnt_wrk, buf, PATH_MAX * 3))) {
+ 		size_t len = strlen(mnt->mnt_dir);
+ 
+ 		if (type) {
+@@ -1028,7 +1028,7 @@ static int table_is_mounted(const char *
+ 			break;
+ 		}
+ 	}
+-	endmntent(tab);
++	fclose(tab);
+ 
+ 	return ret;
+ }
