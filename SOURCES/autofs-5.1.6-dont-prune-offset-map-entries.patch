@@ -1,0 +1,49 @@
+autofs-5.1.6 - dont prune offset map entries
+
+From: Ian Kent <raven@themaw.net>
+
+Indirect maps create offset map entries for multi-mount map entries on
+deamnd and remove them when they expire.
+
+Since they are created based on an owning map entry they don't correspond
+to an actual map entry so they, and their owning map entry, should never
+be pruned.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    9 +++++++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 3608345..34b160e 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -109,6 +109,7 @@ xx/xx/2018 autofs-5.1.5
+ - refactor sss getautomntbyname().
+ - improve sss getautomntbyname() error handling.
+ - use a valid timeout in lookup_prune_one_cache().
++- dont prune offset map entries.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/daemon/lookup.c b/daemon/lookup.c
+index 8bf1335..2de622e 100644
+--- a/daemon/lookup.c
++++ b/daemon/lookup.c
+@@ -1355,6 +1355,15 @@ void lookup_prune_one_cache(struct autofs_point *ap, struct mapent_cache *mc, ti
+ 		}
+ 
+ 		if (ap->type == LKP_INDIRECT) {
++			/* Don't prune offset map entries since they are
++			 * created on demand and managed by expire and don't
++			 * prune the multi-map owner map entry.
++			 */
++			if (*me->key == '/' || me->multi == me) {
++				me = cache_enumerate(mc, me);
++				continue;
++			}
++
+ 			/* If the map hasn't been read (nobrowse
+ 			 * indirect mounts) then keep cached entries
+ 			 * for POSITIVE_TIMEOUT.

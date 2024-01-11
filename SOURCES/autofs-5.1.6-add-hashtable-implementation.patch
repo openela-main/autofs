@@ -1,0 +1,334 @@
+autofs-5.1.6 - add hashtable implementation
+
+From: Ian Kent <raven@themaw.net>
+
+Include the (slightly modified) Linux kernel hashtable implementation.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 
+ include/automount.h |   19 -----
+ include/hash.h      |  101 +++++++++++++++++++++++++++++++
+ include/hashtable.h |  166 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 4 files changed, 269 insertions(+), 18 deletions(-)
+ create mode 100644 include/hash.h
+ create mode 100644 include/hashtable.h
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -117,6 +117,7 @@ xx/xx/2018 autofs-5.1.5
+ - make bind mounts propagation slave by default.
+ - fix browse dir not re-created on symlink expire.
+ - update list.h.
++- add hashtable implementation.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -22,6 +22,7 @@
+ #include <mntent.h>
+ #include "config.h"
+ #include "list.h"
++#include "hash.h"
+ 
+ #include <linux/auto_fs4.h>
+ 
+@@ -143,24 +144,6 @@ struct autofs_point;
+ #define UMOUNT_RETRIES		8
+ #define EXPIRE_RETRIES		3
+ 
+-static u_int32_t inline hash(const char *key, unsigned int size)
+-{
+-	u_int32_t hashval;
+-	char *s = (char *) key;
+-
+-	for (hashval = 0; *s != '\0';) {
+-		hashval += (unsigned char) *s++;
+-		hashval += (hashval << 10);
+-		hashval ^= (hashval >> 6);
+-	}
+-
+-	hashval += (hashval << 3);
+-	hashval ^= (hashval >> 11);
+-	hashval += (hashval << 15);
+-
+-	return hashval % size;
+-}
+-
+ struct mapent_cache {
+ 	pthread_rwlock_t rwlock;
+ 	unsigned int size;
+--- /dev/null
++++ autofs-5.1.4/include/hash.h
+@@ -0,0 +1,101 @@
++#ifndef _LINUX_HASH_H
++#define _LINUX_HASH_H
++/* Fast hashing routine for ints,  longs and pointers.
++   (C) 2002 Nadia Yvette Chambers, IBM */
++
++#include <sys/types.h>
++#include <stdint.h>
++
++/*
++ * The "GOLDEN_RATIO_PRIME" is used in ifs/btrfs/brtfs_inode.h and
++ * fs/inode.c.  It's not actually prime any more (the previous primes
++ * were actively bad for hashing), but the name remains.
++ */
++#if __WORDSIZE == 32
++#define GOLDEN_RATIO_PRIME GOLDEN_RATIO_32
++#define hash_long(val, bits) hash_32(val, bits)
++#elif __WORDSIZE == 64
++#define hash_long(val, bits) hash_64(val, bits)
++#define GOLDEN_RATIO_PRIME GOLDEN_RATIO_64
++#else
++#error Wordsize not 32 or 64
++#endif
++
++/* String based hash function */
++static uint32_t inline hash(const char *key, unsigned int size)
++{
++	u_int32_t hashval;
++	char *s = (char *) key;
++
++	for (hashval = 0; *s != '\0';) {
++		hashval += (unsigned char) *s++;
++		hashval += (hashval << 10);
++		hashval ^= (hashval >> 6);
++	}
++
++	hashval += (hashval << 3);
++	hashval ^= (hashval >> 11);
++	hashval += (hashval << 15);
++
++	return hashval % size;
++}
++
++/*
++ * This hash multiplies the input by a large odd number and takes the
++ * high bits.  Since multiplication propagates changes to the most
++ * significant end only, it is essential that the high bits of the
++ * product be used for the hash value.
++ *
++ * Chuck Lever verified the effectiveness of this technique:
++ * http://www.citi.umich.edu/techreports/reports/citi-tr-00-1.pdf
++ *
++ * Although a random odd number will do, it turns out that the golden
++ * ratio phi = (sqrt(5)-1)/2, or its negative, has particularly nice
++ * properties.  (See Knuth vol 3, section 6.4, exercise 9.)
++ *
++ * These are the negative, (1 - phi) = phi**2 = (3 - sqrt(5))/2,
++ * which is very slightly easier to multiply by and makes no
++ * difference to the hash distribution.
++ */
++#define GOLDEN_RATIO_32 0x61C88647
++#define GOLDEN_RATIO_64 0x61C8864680B583EBull
++
++static inline uint32_t __hash_32(uint32_t val)
++{
++	return val * GOLDEN_RATIO_32;
++}
++
++static inline uint32_t hash_32(uint32_t val, unsigned int bits)
++{
++	/* High bits are more random, so use them. */
++	return __hash_32(val) >> (32 - bits);
++}
++
++static __always_inline uint32_t hash_64(uint64_t val, unsigned int bits)
++{
++#if __WORDSIZE == 64
++	/* 64x64-bit multiply is efficient on all 64-bit processors */
++	return val * GOLDEN_RATIO_64 >> (64 - bits);
++#else
++	/* Hash 64 bits using only 32x32-bit multiply. */
++	return hash_32((uint32_t) val ^ __hash_32(val >> 32), bits);
++#endif
++}
++
++static inline uint32_t hash_ptr(const void *ptr, unsigned int bits)
++{
++	return hash_long((unsigned long) ptr, bits);
++}
++
++/* This really should be called fold32_ptr; it does no hashing to speak of. */
++static inline uint32_t hash32_ptr(const void *ptr)
++{
++	unsigned long val = (unsigned long) ptr;
++
++#if __WORDSIZE == 64
++	val ^= (val >> 32);
++#endif
++	return (uint32_t) val;
++}
++
++#endif /* _LINUX_HASH_H */
+--- /dev/null
++++ autofs-5.1.4/include/hashtable.h
+@@ -0,0 +1,166 @@
++/*
++ * Statically sized hash table implementation
++ * (C) 2012  Sasha Levin <levinsasha928@gmail.com>
++ */
++
++#ifndef _LINUX_HASHTABLE_H
++#define _LINUX_HASHTABLE_H
++
++#include "list.h"
++#include "hash.h"
++
++#ifndef ARRAY_SIZE
++#define ARRAY_SIZE(a) (sizeof(a)/sizeof((a)[0]))
++#endif
++
++static inline unsigned int ilog2(unsigned long val) {
++	unsigned int ret = -1;
++
++	while (val != 0) {
++		val >>= 1;
++		ret++;
++	}
++	return ret;
++}
++
++#define DEFINE_HASHTABLE(name, bits)						\
++	struct hlist_head name[1 << (bits)] =					\
++			{ [0 ... ((1 << (bits)) - 1)] = HLIST_HEAD_INIT }
++
++#define DECLARE_HASHTABLE(name, bits)                                   	\
++	struct hlist_head name[1 << (bits)]
++
++#define HASH_SIZE(name) (ARRAY_SIZE(name))
++#define HASH_BITS(name) ilog2(HASH_SIZE(name))
++
++/* Use hash_32 when possible to allow for fast 32bit hashing in 64bit kernels. */
++#define hash_min(val, bits)							\
++	(sizeof(val) <= 4 ? hash_32(val, bits) : hash_long(val, bits))
++
++static inline void __hash_init(struct hlist_head *ht, unsigned int sz)
++{
++	unsigned int i;
++
++	for (i = 0; i < sz; i++)
++		INIT_HLIST_HEAD(&ht[i]);
++}
++
++/**
++ * hash_init - initialize a hash table
++ * @hashtable: hashtable to be initialized
++ *
++ * Calculates the size of the hashtable from the given parameter, otherwise
++ * same as hash_init_size.
++ *
++ * This has to be a macro since HASH_BITS() will not work on pointers since
++ * it calculates the size during preprocessing.
++ */
++#define hash_init(hashtable) __hash_init(hashtable, HASH_SIZE(hashtable))
++
++/**
++ * hash_add - add an object to a hashtable
++ * @hashtable: hashtable to add to
++ * @node: the &struct hlist_node of the object to be added
++ * @key: the key of the object to be added
++ */
++#define hash_add(hashtable, node, key)						\
++	hlist_add_head(node, &hashtable[hash_min(key, HASH_BITS(hashtable))])
++
++/**
++ * hash_add_str - add a string object to a hashtable
++ * @hashtable: hashtable to add to
++ * @node: the &struct hlist_node of the object to be added
++ * @key: the string key of the object to be added
++ */
++#define hash_add_str(hashtable, node, key)						\
++	hlist_add_head(node, &hashtable[hash(key, HASH_SIZE(hashtable))])
++
++/**
++ * hash_hashed - check whether an object is in any hashtable
++ * @node: the &struct hlist_node of the object to be checked
++ */
++static inline int hash_hashed(struct hlist_node *node)
++{
++	return !hlist_unhashed(node);
++}
++
++static inline int __hash_empty(struct hlist_head *ht, unsigned int sz)
++{
++	unsigned int i;
++
++	for (i = 0; i < sz; i++)
++		if (!hlist_empty(&ht[i]))
++			return 0;
++
++	return 1;
++}
++
++/**
++ * hash_empty - check whether a hashtable is empty
++ * @hashtable: hashtable to check
++ *
++ * This has to be a macro since HASH_BITS() will not work on pointers since
++ * it calculates the size during preprocessing.
++ */
++#define hash_empty(hashtable) __hash_empty(hashtable, HASH_SIZE(hashtable))
++
++/**
++ * hash_del - remove an object from a hashtable
++ * @node: &struct hlist_node of the object to remove
++ */
++static inline void hash_del(struct hlist_node *node)
++{
++	hlist_del_init(node);
++}
++
++/**
++ * hash_for_each - iterate over a hashtable
++ * @name: hashtable to iterate
++ * @bkt: integer to use as bucket loop cursor
++ * @obj: the type * to use as a loop cursor for each entry
++ * @member: the name of the hlist_node within the struct
++ */
++#define hash_for_each(name, bkt, obj, member)				\
++	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name);\
++			(bkt)++)\
++		hlist_for_each_entry(obj, &name[bkt], member)
++
++/**
++ * hash_for_each_safe - iterate over a hashtable safe against removal of
++ * hash entry
++ * @name: hashtable to iterate
++ * @bkt: integer to use as bucket loop cursor
++ * @tmp: a &struct used for temporary storage
++ * @obj: the type * to use as a loop cursor for each entry
++ * @member: the name of the hlist_node within the struct
++ */
++#define hash_for_each_safe(name, bkt, tmp, obj, member)			\
++	for ((bkt) = 0, obj = NULL; obj == NULL && (bkt) < HASH_SIZE(name);\
++			(bkt)++)\
++		hlist_for_each_entry_safe(obj, tmp, &name[bkt], member)
++
++/**
++ * hash_for_each_possible - iterate over all possible objects hashing to the
++ * same bucket
++ * @name: hashtable to iterate
++ * @obj: the type * to use as a loop cursor for each entry
++ * @member: the name of the hlist_node within the struct
++ * @key: the key of the objects to iterate over
++ */
++#define hash_for_each_possible(name, obj, member, key)			\
++	hlist_for_each_entry(obj, &name[hash_min(key, HASH_BITS(name))], member)
++
++/**
++ * hash_for_each_possible_safe - iterate over all possible objects hashing to the
++ * same bucket safe against removals
++ * @name: hashtable to iterate
++ * @obj: the type * to use as a loop cursor for each entry
++ * @tmp: a &struct used for temporary storage
++ * @member: the name of the hlist_node within the struct
++ * @key: the key of the objects to iterate over
++ */
++#define hash_for_each_possible_safe(name, obj, tmp, member, key)	\
++	hlist_for_each_entry_safe(obj, tmp,\
++		&name[hash_min(key, HASH_BITS(name))], member)
++
++#endif

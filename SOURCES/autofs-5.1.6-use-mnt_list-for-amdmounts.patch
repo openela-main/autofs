@@ -1,0 +1,547 @@
+autofs-5.1.6 - use mnt_list for amdmounts
+
+From: Ian Kent <raven@themaw.net>
+
+Use struct mnt_list objects for the list of amd mounts instead of
+struct amd_entry.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 
+ daemon/automount.c     |   48 ++++++++++------------
+ daemon/lookup.c        |   18 +++++---
+ include/automount.h    |    2 
+ include/master.h       |    2 
+ include/mounts.h       |   12 +++++
+ include/parse_amd.h    |    1 
+ lib/master.c           |   36 +----------------
+ lib/mounts.c           |  103 ++++++++++++++++++++++++++++++++++++++++++++++++-
+ modules/mount_autofs.c |   15 ++++---
+ modules/parse_amd.c    |   43 +++++++++++++++-----
+ 11 files changed, 193 insertions(+), 88 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -123,6 +123,7 @@ xx/xx/2018 autofs-5.1.5
+ - make external mounts use simpler hashtable.
+ - add a hash index to mnt_list.
+ - use mnt_list for submounts.
++- use mnt_list for amdmounts.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -595,7 +595,8 @@ static int umount_subtree_mounts(struct
+ 	 * it already to ensure it's ok to remove any offset triggers.
+ 	 */
+ 	if (!is_mm_root && is_mounted(path, MNTS_REAL)) {
+-		struct amd_entry *entry;
++		struct mnt_list *mnt;
++
+ 		debug(ap->logopt, "unmounting dir = %s", path);
+ 		if (umount_ent(ap, path) &&
+ 		    is_mounted(path, MNTS_REAL)) {
+@@ -605,16 +606,12 @@ static int umount_subtree_mounts(struct
+ 		}
+ 
+ 		/* Check for an external mount and umount if possible */
+-		mounts_mutex_lock(ap);
+-		entry = __master_find_amdmount(ap, path);
+-		if (!entry) {
+-			mounts_mutex_unlock(ap);
+-			goto done;
++		mnt = mnts_find_amdmount(path);
++		if (mnt) {
++			umount_amd_ext_mount(ap, mnt->ext_mp);
++			mnts_remove_amdmount(path);
++			mnts_put_mount(mnt);
+ 		}
+-		list_del(&entry->entries);
+-		mounts_mutex_unlock(ap);
+-		umount_amd_ext_mount(ap, entry->fs);
+-		free_amd_entry(entry);
+ 	}
+ done:
+ 	return left;
+@@ -639,7 +636,8 @@ int umount_multi(struct autofs_point *ap
+ 
+ 	/* if this is a symlink we can handle it now */
+ 	if (S_ISLNK(st.st_mode)) {
+-		struct amd_entry *entry;
++		struct mnt_list *mnt;
++
+ 		if (st.st_dev != ap->dev) {
+ 			crit(ap->logopt,
+ 			     "symlink %s has the wrong device, "
+@@ -671,17 +669,15 @@ int umount_multi(struct autofs_point *ap
+ 				     "mkdir_path %s failed: %s", path, estr);
+ 			}
+ 		}
++
+ 		/* Check for an external mount and attempt umount if needed */
+-		mounts_mutex_lock(ap);
+-		entry = __master_find_amdmount(ap, path);
+-		if (!entry) {
+-			mounts_mutex_unlock(ap);
+-			return 0;
+-		}
+-		list_del(&entry->entries);
+-		mounts_mutex_unlock(ap);
+-		umount_amd_ext_mount(ap, entry->fs);
+-		free_amd_entry(entry);
++		mnt = mnts_find_amdmount(path);
++		if (mnt) {
++			umount_amd_ext_mount(ap, mnt->ext_mp);
++			mnts_remove_amdmount(path);
++			mnts_put_mount(mnt);
++		}
++
+ 		return 0;
+ 	}
+ 
+@@ -1720,17 +1716,17 @@ static void handle_mounts_cleanup(void *
+ 		clean = 1;
+ 
+ 	if (submount) {
+-		struct amd_entry *am;
++		struct mnt_list *mnt;
+ 
+ 		/* We are finishing up */
+ 		ap->parent->submnt_count--;
+ 
+ 		/* Submount at ap->path belongs to parent submount list. */
+ 		mnts_remove_submount(ap->path);
+-		am = __master_find_amdmount(ap->parent, ap->path);
+-		if (am) {
+-			list_del_init(&am->entries);
+-			free_amd_entry(am);
++		mnt = mnts_find_amdmount(ap->path);
++		if (mnt) {
++			mnts_remove_amdmount(ap->path);
++			mnts_put_mount(mnt);
+ 		}
+ 	}
+ 
+--- autofs-5.1.4.orig/daemon/lookup.c
++++ autofs-5.1.4/daemon/lookup.c
+@@ -838,7 +838,7 @@ static int lookup_amd_instance(struct au
+ 			       const char *name, int name_len)
+ {
+ 	struct map_source *instance;
+-	struct amd_entry *entry;
++	struct mnt_list *mnt;
+ 	const char *argv[2];
+ 	const char **pargv = NULL;
+ 	int argc = 0;
+@@ -861,21 +861,23 @@ static int lookup_amd_instance(struct au
+ 	strcpy(m_key, ap->path);
+ 	strcat(m_key, "/");
+ 	strcat(m_key, me->multi->key);
+-	entry = master_find_amdmount(ap, m_key);
++
++	mnt = mnts_find_amdmount(m_key);
+ 	free(m_key);
+ 
+-	if (!entry) {
++	if (!mnt) {
+ 		error(ap->logopt, "expected amd mount entry not found");
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
+ 
+-	if (strcmp(entry->type, "host")) {
+-		error(ap->logopt, "unexpected map type %s", entry->type);
++	if (strcmp(mnt->amd_type, "host")) {
++		error(ap->logopt, "unexpected map type %s", mnt->amd_type);
++		mnts_put_mount(mnt);
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
+ 
+-	if (entry->opts && *entry->opts) {
+-		argv[0] = entry->opts;
++	if (mnt->amd_opts && *mnt->amd_opts) {
++		argv[0] = mnt->amd_opts;
+ 		argv[1] = NULL;
+ 		pargv = argv;
+ 		argc = 1;
+@@ -894,9 +896,11 @@ static int lookup_amd_instance(struct au
+ 		}
+ 	}
+ 	if (!instance) {
++		mnts_put_mount(mnt);
+ 		error(ap->logopt, "expected hosts map instance not found");
+ 		return NSS_STATUS_UNKNOWN;
+ 	}
++	mnts_put_mount(mnt);
+ 
+ 	return do_lookup_mount(ap, instance, name, name_len);
+ }
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -568,10 +568,10 @@ struct autofs_point {
+ 	struct autofs_point *parent;	/* Owner of mounts list for submount */
+ 	pthread_mutex_t mounts_mutex;	/* Protect mount lists */
+ 	struct list_head mounts;	/* List of autofs mounts at current level */
+-	struct list_head amdmounts;	/* List of non submount amd mounts */
+ 	unsigned int submount;		/* Is this a submount */
+ 	unsigned int submnt_count;	/* Number of submounts */
+ 	struct list_head submounts;	/* List of child submounts */
++	struct list_head amdmounts;	/* List of non submount amd mounts */
+ 	unsigned int shutdown;		/* Shutdown notification */
+ };
+ 
+--- autofs-5.1.4.orig/include/master.h
++++ autofs-5.1.4/include/master.h
+@@ -109,8 +109,6 @@ void master_source_current_wait(struct m
+ void master_source_current_signal(struct master_mapent *);
+ struct master_mapent *master_find_mapent(struct master *, const char *);
+ unsigned int master_partial_match_mapent(struct master *, const char *);
+-struct amd_entry *__master_find_amdmount(struct autofs_point *, const char *);
+-struct amd_entry *master_find_amdmount(struct autofs_point *, const char *);
+ struct master_mapent *master_new_mapent(struct master *, const char *, time_t);
+ void master_add_mapent(struct master *, struct master_mapent *);
+ void master_remove_mapent(struct master_mapent *);
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -38,6 +38,7 @@
+ #define MNTS_INDIRECT	0x0008
+ #define MNTS_DIRECT	0x0010
+ #define MNTS_OFFSET	0x0020
++#define MNTS_AMD_MOUNT	0x0040
+ 
+ #define REMOUNT_SUCCESS		0x0000
+ #define REMOUNT_FAIL		0x0001
+@@ -64,6 +65,14 @@ struct mnt_list {
+ 	struct list_head submount;
+ 	struct list_head submount_work;
+ 
++	/* List of amd-mounts of an autofs_point */
++	char *ext_mp;
++	char *amd_pref;
++	char *amd_type;
++	char *amd_opts;
++	unsigned int amd_cache_opts;
++	struct list_head amdmount;
++
+ 	/*
+ 	 * List operations ie. get_mnt_list.
+ 	 */
+@@ -118,6 +127,9 @@ struct mnt_list *mnts_add_submount(struc
+ void mnts_remove_submount(const char *mp);
+ void mnts_get_submount_list(struct list_head *mnts, struct autofs_point *ap);
+ void mnts_put_submount_list(struct list_head *mnts);
++struct mnt_list *mnts_find_amdmount(const char *path);
++struct mnt_list *mnts_add_amdmount(struct autofs_point *ap, struct amd_entry *entry);
++void mnts_remove_amdmount(const char *mp);
+ struct mnt_list *get_mnt_list(const char *path, int include);
+ int unlink_mount_tree(struct autofs_point *ap, const char *mp);
+ void free_mnt_list(struct mnt_list *list);
+--- autofs-5.1.4.orig/include/parse_amd.h
++++ autofs-5.1.4/include/parse_amd.h
+@@ -65,7 +65,6 @@ struct amd_entry {
+ 	char *umount;
+ 	struct selector *selector;
+ 	struct list_head list;
+-	struct list_head entries;
+ };
+ 
+ int amd_parse_list(struct autofs_point *,
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -152,12 +152,10 @@ void master_free_autofs_point(struct aut
+ 	head = &ap->amdmounts;
+ 	p = head->next;
+ 	while (p != head) {
+-		struct amd_entry *entry = list_entry(p, struct amd_entry, entries);
++		struct mnt_list *mnt = list_entry(p, struct mnt_list, amdmount);
+ 		p = p->next;
+-		if (!list_empty(&entry->entries))
+-			list_del(&entry->entries);
+-		ext_mount_remove(entry->fs);
+-		free_amd_entry(entry);
++		ext_mount_remove(mnt->ext_mp);
++		mnts_remove_amdmount(mnt->mp);
+ 	}
+ 	mounts_mutex_unlock(ap);
+ 
+@@ -761,34 +759,6 @@ unsigned int master_partial_match_mapent
+ 	return ret;
+ }
+ 
+-struct amd_entry *__master_find_amdmount(struct autofs_point *ap, const char *path)
+-{
+-	struct list_head *head, *p;
+-
+-	head = &ap->amdmounts;
+-	list_for_each(p, head) {
+-		struct amd_entry *entry;
+-
+-		entry = list_entry(p, struct amd_entry, entries);
+-
+-		if (!strcmp(entry->path, path))
+-			return entry;
+-	}
+-
+-	return NULL;
+-}
+-
+-struct amd_entry *master_find_amdmount(struct autofs_point *ap, const char *path)
+-{
+-	struct amd_entry *entry;
+-
+-	mounts_mutex_lock(ap);
+-	entry = __master_find_amdmount(ap, path);
+-	mounts_mutex_unlock(ap);
+-
+-	return entry;
+-}
+-
+ struct master_mapent *master_new_mapent(struct master *master, const char *path, time_t age)
+ {
+ 	struct master_mapent *entry;
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -546,7 +546,6 @@ struct amd_entry *new_amd_entry(const st
+ 	memset(new, 0, sizeof(*new));
+ 	new->path = path;
+ 	INIT_LIST_HEAD(&new->list);
+-	INIT_LIST_HEAD(&new->entries);
+ 
+ 	return new;
+ }
+@@ -887,6 +886,7 @@ static struct mnt_list *mnts_alloc_mount
+ 	INIT_HLIST_NODE(&this->hash);
+ 	INIT_LIST_HEAD(&this->submount);
+ 	INIT_LIST_HEAD(&this->submount_work);
++	INIT_LIST_HEAD(&this->amdmount);
+ done:
+ 	return this;
+ }
+@@ -1048,6 +1048,107 @@ void mnts_put_submount_list(struct list_
+ 	mnts_hash_mutex_unlock();
+ }
+ 
++struct mnt_list *mnts_find_amdmount(const char *path)
++{
++	struct mnt_list *mnt;
++
++	mnt = mnts_lookup_mount(path);
++	if (mnt && mnt->flags & MNTS_AMD_MOUNT)
++		return mnt;
++	mnts_put_mount(mnt);
++	return NULL;
++}
++
++struct mnt_list *mnts_add_amdmount(struct autofs_point *ap, struct amd_entry *entry)
++{
++	struct mnt_list *this;
++	char *type, *ext_mp, *pref, *opts;
++
++	ext_mp = pref = type = opts = NULL;
++
++	if (entry->fs) {
++		ext_mp = strdup(entry->fs);
++		if (!ext_mp)
++			goto fail;
++	}
++
++	if (entry->pref) {
++		pref = strdup(entry->pref);
++		if (!pref)
++			goto fail;
++	}
++
++	if (entry->type) {
++		type = strdup(entry->type);
++		if (!type)
++			goto fail;
++	}
++
++	if (entry->opts) {
++		opts = strdup(entry->opts);
++		if (!opts)
++			goto fail;
++	}
++
++	mnts_hash_mutex_lock();
++	this = mnts_get_mount(entry->path);
++	if (this) {
++		this->ext_mp = ext_mp;
++		this->amd_pref = pref;
++		this->amd_type = type;
++		this->amd_opts = opts;
++		this->amd_cache_opts = entry->cache_opts;
++		this->flags |= MNTS_AMD_MOUNT;
++		if (list_empty(&this->amdmount))
++			list_add_tail(&this->amdmount, &ap->amdmounts);
++	}
++	mnts_hash_mutex_unlock();
++
++	return this;
++fail:
++	if (ext_mp)
++		free(ext_mp);
++	if (pref)
++		free(pref);
++	if (type)
++		free(type);
++	if (opts)
++		free(opts);
++	return NULL;
++}
++
++void mnts_remove_amdmount(const char *mp)
++{
++	struct mnt_list *this;
++
++	mnts_hash_mutex_lock();
++	this = mnts_lookup(mp);
++	if (!(this && this->flags & MNTS_AMD_MOUNT))
++		goto done;
++	this->flags &= ~MNTS_AMD_MOUNT;
++	list_del_init(&this->submount);
++	if (this->ext_mp) {
++		free(this->ext_mp);
++		this->ext_mp = NULL;
++	}
++	if (this->amd_type) {
++		free(this->amd_type);
++		this->amd_type = NULL;
++	}
++	if (this->amd_pref) {
++		free(this->amd_pref);
++		this->amd_pref = NULL;
++	}
++	if (this->amd_opts) {
++		free(this->amd_opts);
++		this->amd_opts = NULL;
++	}
++	this->amd_cache_opts = 0;
++	__mnts_put_mount(this);
++done:
++	mnts_hash_mutex_unlock();
++}
++
+ /* From glibc decode_name() */
+ /* Since the values in a line are separated by spaces, a name cannot
+  * contain a space.  Therefore some programs encode spaces in names
+--- autofs-5.1.4.orig/modules/mount_autofs.c
++++ autofs-5.1.4/modules/mount_autofs.c
+@@ -286,16 +286,19 @@ int mount_mount(struct autofs_point *ap,
+ 	mounts_mutex_lock(ap);
+ 
+ 	if (source->flags & MAP_FLAG_FORMAT_AMD) {
+-		struct amd_entry *am_entry = __master_find_amdmount(ap, entry->path);
++		struct mnt_list *mnt;
+ 
+-		if (am_entry) {
+-			if (am_entry->pref) {
+-				nap->pref = am_entry->pref;
+-				am_entry->pref = NULL;
++		mnt = mnts_find_amdmount(entry->path);
++		if (mnt) {
++			if (mnt->amd_pref) {
++				nap->pref = mnt->amd_pref;
++				mnt->amd_pref = NULL;
+ 			}
+ 
+-			if (am_entry->cache_opts & AMD_CACHE_OPTION_ALL)
++			if (mnt->amd_cache_opts & AMD_CACHE_OPTION_ALL)
+ 				nap->flags |= MOUNT_FLAG_AMD_CACHE_ALL;
++
++			mnts_put_mount(mnt);
+ 		}
+ 	}
+ 
+--- autofs-5.1.4.orig/modules/parse_amd.c
++++ autofs-5.1.4/modules/parse_amd.c
+@@ -1300,6 +1300,7 @@ static int do_host_mount(struct autofs_p
+ {
+ 	struct lookup_mod *lookup;
+ 	struct map_source *instance;
++	struct mnt_list *mnt = NULL;
+ 	struct mapent *me;
+ 	const char *argv[2];
+ 	const char **pargv = NULL;
+@@ -1316,7 +1317,9 @@ static int do_host_mount(struct autofs_p
+ 	 */
+ 	if (strcmp(name, entry->rhost)) {
+ 		char *target;
+-		size_t len = strlen(ap->path) + strlen(entry->rhost) + 2;
++		size_t len;
++
++		len = strlen(ap->path) + strlen(entry->rhost) + 2;
+ 		target = malloc(len);
+ 		if (!target) {
+ 			warn(ap->logopt, MODPREFIX
+@@ -1329,6 +1332,15 @@ static int do_host_mount(struct autofs_p
+ 		if (entry->path)
+ 			free(entry->path);
+ 		entry->path = target;
++
++		/* Add an mnt_list entry for the updated path. */
++		mnt = mnts_add_amdmount(ap, entry);
++		if (!mnt) {
++			error(ap->logopt, MODPREFIX
++			      "failed to update mount mnt_list entry");
++			goto out;
++		}
++
+ 		/*
+ 		 * Wait for any expire before racing to mount the
+ 		 * export tree or bail out if we're shutting down.
+@@ -1388,6 +1400,8 @@ static int do_host_mount(struct autofs_p
+ 		warn(ap->logopt, MODPREFIX
+ 		     "failed to create symlink to hosts mount base");
+ out:
++	if (ret && mnt)
++		mnts_remove_amdmount(mnt->mp);
+ 	return ret;
+ }
+ 
+@@ -2204,6 +2218,7 @@ int parse_mount(struct autofs_point *ap,
+ 	struct list_head entries, *p, *head;
+ 	struct amd_entry *defaults_entry;
+ 	struct amd_entry *cur_defaults;
++	struct mnt_list *mnt;
+ 	int rv = 1;
+ 	int cur_state;
+ 	int ret;
+@@ -2313,21 +2328,27 @@ int parse_mount(struct autofs_point *ap,
+ 		 * add parsed entry to parent amd mount list and remove
+ 		 * on mount fail.
+ 		 */
+-		mounts_mutex_lock(ap);
+-		list_add_tail(&this->entries, &ap->amdmounts);
+-		mounts_mutex_unlock(ap);
++		mnt = mnts_add_amdmount(ap, this);
++		if (!mnt) {
++			error(ap->logopt, MODPREFIX
++			      "failed to add mount to mnt_list");
++			break;
++		}
+ 
+ 		rv = amd_mount(ap, name, this, source, sv, flags, ctxt);
+-		mounts_mutex_lock(ap);
+ 		if (!rv) {
+-			/* Mounted, remove entry from parsed list */
+-			list_del_init(&this->list);
+-			mounts_mutex_unlock(ap);
++			/*
++			 * If entry->path doesn't match the mnt->mp then
++			 * the mount point path has changed and a new
++			 * mnt_list entry added for it, so remove the
++			 * original.
++			 */
++			if (strcmp(this->path, mnt->mp))
++				mnts_remove_amdmount(this->path);
+ 			break;
+ 		}
+-		/* Not mounted, remove entry from the parent list */
+-		list_del_init(&this->entries);
+-		mounts_mutex_unlock(ap);
++		/* Not mounted, remove the mnt_list entry from amdmount list */
++		mnts_remove_amdmount(this->path);
+ 	}
+ 	free_amd_entry(cur_defaults);
+ 

@@ -1,0 +1,36 @@
+autofs-5.1.7 - fix mnts_get_expire_list() expire list construction
+
+From: Ian Kent <raven@themaw.net>
+
+The mnts_get_expire_list() function is supposed to return an ordered
+list of expire candidates but it is not checking the mounted status
+of list entries and is returning a larger list than is needed.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    3 +++
+ 2 files changed, 4 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -13,6 +13,7 @@
+ - refactor umount_multi_triggers().
+ - eliminate clean_stale_multi_triggers().
+ - simplify mount_subtree() mount check.
++- fix mnts_get_expire_list() expire list construction.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1364,6 +1364,9 @@ void mnts_get_expire_list(struct list_he
+ 	list_for_each_entry(mnt, &ap->mounts, mount) {
+ 		struct node *n;
+ 
++		if (!(mnt->flags & MNTS_MOUNTED))
++			continue;
++
+ 		__mnts_get_mount(mnt);
+ 
+ 		if (!tree) {

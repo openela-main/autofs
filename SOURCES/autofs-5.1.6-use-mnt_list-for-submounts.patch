@@ -1,0 +1,472 @@
+autofs-5.1.6 - use mnt_list for submounts
+
+From: Ian Kent <raven@themaw.net>
+
+Use struct mnt_list objects for submount list entries instead of
+struct autofs_point itself.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 
+ daemon/automount.c     |   11 ++++-
+ daemon/direct.c        |    7 ++-
+ daemon/indirect.c      |    5 ++
+ include/automount.h    |    2 -
+ include/master.h       |    2 -
+ include/mounts.h       |   10 +++++
+ lib/master.c           |   93 +++++++++++++++----------------------------------
+ lib/mounts.c           |   81 ++++++++++++++++++++++++++++++++++++++++++
+ modules/mount_autofs.c |   17 ++++++++
+ 10 files changed, 157 insertions(+), 72 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -122,6 +122,7 @@ xx/xx/2018 autofs-5.1.5
+ - make external mounts independent of amd_entry.
+ - make external mounts use simpler hashtable.
+ - add a hash index to mnt_list.
++- use mnt_list for submounts.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -624,6 +624,7 @@ done:
+    it also tries to umount path itself */
+ int umount_multi(struct autofs_point *ap, const char *path, int incl)
+ {
++	struct mnt_list *sbmnt;
+ 	int is_autofs_fs;
+ 	struct stat st;
+ 	int left;
+@@ -685,8 +686,11 @@ int umount_multi(struct autofs_point *ap
+ 	}
+ 
+ 	is_autofs_fs = 0;
+-	if (master_find_submount(ap, path))
++	sbmnt = mnts_find_submount(path);
++	if (sbmnt) {
+ 		is_autofs_fs = 1;
++		mnts_put_mount(sbmnt);
++	}
+ 
+ 	left = 0;
+ 
+@@ -1717,9 +1721,12 @@ static void handle_mounts_cleanup(void *
+ 
+ 	if (submount) {
+ 		struct amd_entry *am;
++
+ 		/* We are finishing up */
+ 		ap->parent->submnt_count--;
+-		list_del_init(&ap->mounts);
++
++		/* Submount at ap->path belongs to parent submount list. */
++		mnts_remove_submount(ap->path);
+ 		am = __master_find_amdmount(ap->parent, ap->path);
+ 		if (am) {
+ 			list_del_init(&am->entries);
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -1211,14 +1211,17 @@ static void *do_mount_direct(void *arg)
+ 	 */
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &state);
+ 	if (status) {
++		struct mnt_list *sbmnt;
+ 		struct mapent *me;
+ 		struct statfs fs;
+ 		unsigned int close_fd = 0;
+ 
++		sbmnt = mnts_find_submount(mt.name);
+ 		if (statfs(mt.name, &fs) == -1 ||
+-		   (fs.f_type == AUTOFS_SUPER_MAGIC &&
+-		    !master_find_submount(ap, mt.name)))
++		   (fs.f_type == AUTOFS_SUPER_MAGIC && !sbmnt))
+ 			close_fd = 1;
++		if (sbmnt)
++			mnts_put_mount(sbmnt);
+ 		cache_writelock(mt.mc);
+ 		if ((me = cache_lookup_distinct(mt.mc, mt.name))) {
+ 			/*
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -401,6 +401,7 @@ void *expire_proc_indirect(void *arg)
+ 			if (next->flags & MNTS_INDIRECT)
+ 				master_notify_submount(ap, next->mp, ap->state);
+ 			else if (next->flags & MNTS_OFFSET) {
++				struct mnt_list *sbmnt;
+ 				struct map_source *map;
+ 				struct mapent_cache *mc = NULL;
+ 				struct mapent *me = NULL;
+@@ -413,7 +414,9 @@ void *expire_proc_indirect(void *arg)
+ 				}
+ 
+ 				/* Don't touch submounts */
+-				if (master_find_submount(ap, next->mp)) {
++				sbmnt = mnts_find_submount(next->mp);
++				if (sbmnt) {
++					mnts_put_mount(sbmnt);
+ 					pthread_setcancelstate(cur_state, NULL);
+ 					continue;
+ 				}
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -570,9 +570,9 @@ struct autofs_point {
+ 	struct list_head mounts;	/* List of autofs mounts at current level */
+ 	struct list_head amdmounts;	/* List of non submount amd mounts */
+ 	unsigned int submount;		/* Is this a submount */
+-	unsigned int shutdown;		/* Shutdown notification */
+ 	unsigned int submnt_count;	/* Number of submounts */
+ 	struct list_head submounts;	/* List of child submounts */
++	unsigned int shutdown;		/* Shutdown notification */
+ };
+ 
+ #define UNLINK_AND_CONT		0x01
+--- autofs-5.1.4.orig/include/master.h
++++ autofs-5.1.4/include/master.h
+@@ -109,8 +109,6 @@ void master_source_current_wait(struct m
+ void master_source_current_signal(struct master_mapent *);
+ struct master_mapent *master_find_mapent(struct master *, const char *);
+ unsigned int master_partial_match_mapent(struct master *, const char *);
+-struct autofs_point *__master_find_submount(struct autofs_point *, const char *);
+-struct autofs_point *master_find_submount(struct autofs_point *, const char *);
+ struct amd_entry *__master_find_amdmount(struct autofs_point *, const char *);
+ struct amd_entry *master_find_amdmount(struct autofs_point *, const char *);
+ struct master_mapent *master_new_mapent(struct master *, const char *, time_t);
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -59,6 +59,11 @@ struct mnt_list {
+ 	struct hlist_node hash;
+ 	unsigned int ref;
+ 
++	/* List of sub-mounts of an autofs_point */
++	struct autofs_point *ap;
++	struct list_head submount;
++	struct list_head submount_work;
++
+ 	/*
+ 	 * List operations ie. get_mnt_list.
+ 	 */
+@@ -108,6 +113,11 @@ int ext_mount_remove(const char *);
+ int ext_mount_inuse(const char *);
+ struct mnt_list *mnts_lookup_mount(const char *mp);
+ void mnts_put_mount(struct mnt_list *mnt);
++struct mnt_list *mnts_find_submount(const char *path);
++struct mnt_list *mnts_add_submount(struct autofs_point *ap);
++void mnts_remove_submount(const char *mp);
++void mnts_get_submount_list(struct list_head *mnts, struct autofs_point *ap);
++void mnts_put_submount_list(struct list_head *mnts);
+ struct mnt_list *get_mnt_list(const char *path, int include);
+ int unlink_mount_tree(struct autofs_point *ap, const char *mp);
+ void free_mnt_list(struct mnt_list *list);
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -761,34 +761,6 @@ unsigned int master_partial_match_mapent
+ 	return ret;
+ }
+ 
+-struct autofs_point *__master_find_submount(struct autofs_point *ap, const char *path)
+-{
+-	struct list_head *head, *p;
+-
+-	head = &ap->submounts;
+-	list_for_each(p, head) {
+-		struct autofs_point *submount;
+-
+-		submount = list_entry(p, struct autofs_point, mounts);
+-
+-		if (!strcmp(submount->path, path))
+-			return submount;
+-	}
+-
+-	return NULL;
+-}
+-
+-struct autofs_point *master_find_submount(struct autofs_point *ap, const char *path)
+-{
+-	struct autofs_point *submount;
+-
+-	mounts_mutex_lock(ap);
+-	submount = __master_find_submount(ap, path);
+-	mounts_mutex_unlock(ap);
+-
+-	return submount;
+-}
+-
+ struct amd_entry *__master_find_amdmount(struct autofs_point *ap, const char *path)
+ {
+ 	struct list_head *head, *p;
+@@ -1190,85 +1162,80 @@ int master_submount_list_empty(struct au
+ 
+ int master_notify_submount(struct autofs_point *ap, const char *path, enum states state)
+ {
+-	struct list_head *head, *p;
+-	struct autofs_point *this = NULL;
++	struct mnt_list *this, *sbmnt;
++	LIST_HEAD(sbmnts);
+ 	int ret = 1;
+ 
+-	mounts_mutex_lock(ap);
+-
+-	head = &ap->submounts;
+-	p = head->prev;
+-	while (p != head) {
+-		this = list_entry(p, struct autofs_point, mounts);
+-		p = p->prev;
++	mnts_get_submount_list(&sbmnts, ap);
++	if (list_empty(&sbmnts))
++		return 1;
++
++	list_for_each_entry(this, &sbmnts, submount_work) {
++		/* Not a submount */
++		if (!(this->flags & MNTS_AUTOFS))
++			continue;
+ 
+ 		/* path not the same */
+-		if (strcmp(this->path, path))
++		if (strcmp(this->mp, path))
+ 			continue;
+ 
+-		if (!master_submount_list_empty(this)) {
+-			char *this_path = strdup(this->path);
+-			if (this_path) {
+-				mounts_mutex_unlock(ap);
+-				master_notify_submount(this, path, state);
+-				mounts_mutex_lock(ap);
+-				if (!__master_find_submount(ap, this_path)) {
+-					free(this_path);
+-					continue;
+-				}
+-				free(this_path);
+-			}
++		if (!master_submount_list_empty(this->ap)) {
++			struct mnt_list *sm;
++
++			master_notify_submount(this->ap, path, state);
++			sm = mnts_find_submount(path);
++			if (!sm)
++				continue;
++			mnts_put_mount(sm);
+ 		}
+ 
+ 		/* Now we have found the submount we want to expire */
+ 
+ 		st_mutex_lock();
+ 
+-		if (this->state == ST_SHUTDOWN) {
++		if (this->ap->state == ST_SHUTDOWN) {
+ 			this = NULL;
+ 			st_mutex_unlock();
+ 			break;
+ 		}
+ 
+-		this->shutdown = ap->shutdown;
++		this->ap->shutdown = ap->shutdown;
+ 
+-		__st_add_task(this, state);
++		__st_add_task(this->ap, state);
+ 
+ 		st_mutex_unlock();
+-		mounts_mutex_unlock(ap);
+ 
+-		st_wait_task(this, state, 0);
++		st_wait_task(this->ap, state, 0);
+ 
+ 		/*
+ 		 * If our submount gets to state ST_SHUTDOWN, ST_SHUTDOWN_PENDING or
+ 		 * ST_SHUTDOWN_FORCE we need to wait until it goes away or changes
+ 		 * to ST_READY.
+ 		 */
+-		mounts_mutex_lock(ap);
+ 		st_mutex_lock();
+-		while ((this = __master_find_submount(ap, path))) {
++		while ((sbmnt = mnts_find_submount(path))) {
+ 			struct timespec t = { 0, 300000000 };
+ 			struct timespec r;
+ 
+-			if (this->state != ST_SHUTDOWN &&
+-			    this->state != ST_SHUTDOWN_PENDING &&
+-			    this->state != ST_SHUTDOWN_FORCE) {
++			if (sbmnt->ap->state != ST_SHUTDOWN &&
++			    sbmnt->ap->state != ST_SHUTDOWN_PENDING &&
++			    sbmnt->ap->state != ST_SHUTDOWN_FORCE) {
+ 				ret = 0;
++				mnts_put_mount(sbmnt);
+ 				break;
+ 			}
++			mnts_put_mount(sbmnt);
+ 
+ 			st_mutex_unlock();
+-			mounts_mutex_unlock(ap);
+ 			while (nanosleep(&t, &r) == -1 && errno == EINTR)
+ 				memcpy(&t, &r, sizeof(struct timespec));
+-			mounts_mutex_lock(ap);
+ 			st_mutex_lock();
+ 		}
+ 		st_mutex_unlock();
+ 		break;
+ 	}
+ 
+-	mounts_mutex_unlock(ap);
++	mnts_put_submount_list(&sbmnts);
+ 
+ 	return ret;
+ }
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -885,6 +885,8 @@ static struct mnt_list *mnts_alloc_mount
+ 
+ 	this->ref = 1;
+ 	INIT_HLIST_NODE(&this->hash);
++	INIT_LIST_HEAD(&this->submount);
++	INIT_LIST_HEAD(&this->submount_work);
+ done:
+ 	return this;
+ }
+@@ -967,6 +969,85 @@ void mnts_put_mount(struct mnt_list *mnt
+ 	mnts_hash_mutex_unlock();
+ }
+ 
++struct mnt_list *mnts_find_submount(const char *path)
++{
++	struct mnt_list *mnt;
++
++	mnt = mnts_lookup_mount(path);
++	if (mnt && mnt->flags & MNTS_AUTOFS)
++		return mnt;
++	mnts_put_mount(mnt);
++	return NULL;
++}
++
++struct mnt_list *mnts_add_submount(struct autofs_point *ap)
++{
++	struct mnt_list *this;
++
++	mnts_hash_mutex_lock();
++	this = mnts_get_mount(ap->path);
++	if (this) {
++		if (!this->ap)
++			this->ap = ap;
++		else if (this->ap != ap ||
++			 this->ap->parent != ap->parent) {
++			__mnts_put_mount(this);
++			mnts_hash_mutex_unlock();
++			error(ap->logopt,
++			      "conflict with submount owner: %s", ap->path);
++			goto fail;
++		}
++		this->flags |= MNTS_AUTOFS;
++		if (list_empty(&this->submount))
++			list_add_tail(&this->submount, &ap->parent->submounts);
++	}
++	mnts_hash_mutex_unlock();
++fail:
++	return this;
++}
++
++void mnts_remove_submount(const char *mp)
++{
++	struct mnt_list *this;
++
++	mnts_hash_mutex_lock();
++	this = mnts_lookup(mp);
++	if (this && this->flags & MNTS_AUTOFS) {
++		this->flags &= ~MNTS_AUTOFS;
++		this->ap = NULL;
++		list_del_init(&this->submount);
++		__mnts_put_mount(this);
++	}
++	mnts_hash_mutex_unlock();
++}
++
++void mnts_get_submount_list(struct list_head *mnts, struct autofs_point *ap)
++{
++	struct mnt_list *mnt;
++
++	mnts_hash_mutex_lock();
++	if (list_empty(&ap->submounts))
++		goto done;
++	list_for_each_entry(mnt, &ap->submounts, submount) {
++		__mnts_get_mount(mnt);
++		list_add(&mnt->submount_work, mnts);
++	}
++done:
++	mnts_hash_mutex_unlock();
++}
++
++void mnts_put_submount_list(struct list_head *mnts)
++{
++	struct mnt_list *mnt, *tmp;
++
++	mnts_hash_mutex_lock();
++	list_for_each_entry_safe(mnt, tmp, mnts, submount_work) {
++		list_del_init(&mnt->submount_work);
++		__mnts_put_mount(mnt);
++	}
++	mnts_hash_mutex_unlock();
++}
++
+ /* From glibc decode_name() */
+ /* Since the values in a line are separated by spaces, a name cannot
+  * contain a space.  Therefore some programs encode spaces in names
+--- autofs-5.1.4.orig/modules/mount_autofs.c
++++ autofs-5.1.4/modules/mount_autofs.c
+@@ -65,6 +65,7 @@ int mount_mount(struct autofs_point *ap,
+ 	struct master_mapent *entry;
+ 	struct map_source *source;
+ 	struct autofs_point *nap;
++	struct mnt_list *mnt;
+ 	char buf[MAX_ERR_BUF];
+ 	char *options, *p;
+ 	int len, ret;
+@@ -307,6 +308,18 @@ int mount_mount(struct autofs_point *ap,
+ 		return 1;
+ 	}
+ 
++	mnt = mnts_add_submount(nap);
++	if (!mnt) {
++		crit(ap->logopt,
++		     MODPREFIX "failed to allocate mount %s", realpath);
++		handle_mounts_startup_cond_destroy(&suc);
++		mounts_mutex_unlock(ap);
++		master_free_map_source(source, 1);
++		master_free_mapent(entry);
++		return 1;
++	}
++
++
+ 	suc.ap = nap;
+ 	suc.root = mountpoint;
+ 	suc.done = 0;
+@@ -318,6 +331,7 @@ int mount_mount(struct autofs_point *ap,
+ 		     "failed to create mount handler thread for %s",
+ 		     realpath);
+ 		handle_mounts_startup_cond_destroy(&suc);
++		mnts_remove_submount(nap->path);
+ 		mounts_mutex_unlock(ap);
+ 		master_free_map_source(source, 1);
+ 		master_free_mapent(entry);
+@@ -328,6 +342,7 @@ int mount_mount(struct autofs_point *ap,
+ 		status = pthread_cond_wait(&suc.cond, &suc.mutex);
+ 		if (status) {
+ 			handle_mounts_startup_cond_destroy(&suc);
++			mnts_remove_submount(nap->path);
+ 			mounts_mutex_unlock(ap);
+ 			master_free_map_source(source, 1);
+ 			master_free_mapent(entry);
+@@ -339,6 +354,7 @@ int mount_mount(struct autofs_point *ap,
+ 		crit(ap->logopt,
+ 		     MODPREFIX "failed to create submount for %s", realpath);
+ 		handle_mounts_startup_cond_destroy(&suc);
++		mnts_remove_submount(nap->path);
+ 		mounts_mutex_unlock(ap);
+ 		master_free_map_source(source, 1);
+ 		master_free_mapent(entry);
+@@ -347,7 +363,6 @@ int mount_mount(struct autofs_point *ap,
+ 	nap->thid = thid;
+ 
+ 	ap->submnt_count++;
+-	list_add(&nap->mounts, &ap->submounts);
+ 
+ 	handle_mounts_startup_cond_destroy(&suc);
+ 	mounts_mutex_unlock(ap);

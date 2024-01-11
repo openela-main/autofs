@@ -1,0 +1,33 @@
+autofs-5.1.5 - fix amd entry memory leak
+
+From: Ian Kent <raven@themaw.net>
+
+Fix an incorrect free of an amd_entry structure.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/master.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -58,6 +58,7 @@ xx/xx/2018 autofs-5.1.5
+ - remove unused function has_fstab_option().
+ - remove unused function reverse_mnt_list().
+ - remove a couple of old debug messages.
++- fix amd entry memory leak.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/master.c
++++ autofs-5.1.4/lib/master.c
+@@ -155,7 +155,7 @@ void master_free_autofs_point(struct aut
+ 			ext_mount_remove(&entry->ext_mount, entry->fs);
+ 		if (!list_empty(&entry->entries))
+ 			list_del(&entry->entries);
+-		free(entry);
++		free_amd_entry(entry);
+ 	}
+ 	mounts_mutex_unlock(ap);
+ 

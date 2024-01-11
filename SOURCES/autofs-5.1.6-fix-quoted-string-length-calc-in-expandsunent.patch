@@ -1,0 +1,44 @@
+autofs-5.1.6 - fix quoted string length calc in expandsunent()
+
+From: Ian Kent <raven@themaw.net>
+
+The expandsunent() function in modules/parse_sun.c fails to properly
+handle the ending " in a quoted string causing the length calculation
+to not account for the ending quote and also doesn't properly account
+for the remainder of the string being expanded.
+
+Also, when called again (after being called to get the length) the
+allocated buffer is too small leading to out of bounds accesses.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |    6 ++++--
+ 2 files changed, 5 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -79,6 +79,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix a regression with map instance lookup.
+ - fix trailing dollar sun entry expansion.
+ - initialize struct addrinfo for getaddrinfo() calls.
++- fix quoted string length calc in expandsunent().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -213,9 +213,11 @@ int expandsunent(const char *src, char *
+ 					*dst++ = *src;
+ 				src++;
+ 			}
+-			if (*src && dst) {
++			if (*src) {
+ 				len++;
+-				*dst++ = *src++;
++				if (dst)
++					*dst++ = *src;
++				src++;
+ 			}
+ 			break;
+ 

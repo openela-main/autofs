@@ -1,0 +1,36 @@
+autofs-5.1.7 - fix arg not used in error print
+
+From: Ian Kent <raven@themaw.net>
+
+Coverity: extra_argument: This argument was not used by the format
+	  string: "key".
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    4 +---
+ 2 files changed, 2 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -60,6 +60,7 @@
+ - dont try umount after stat() ENOENT fail.
+ - remove redundant assignment in master_add_amd_mount_section_mounts().
+ - fix dead code in mnts_add_mount().
++- fix arg not used in error print.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1519,9 +1519,7 @@ int tree_mapent_add_node(struct mapent_c
+ 	}
+ 
+ 	if (MAPENT_ROOT(base) != MAPENT_NODE(base)) {
+-		error(logopt,
+-		     "failed to find multi-mount root of offset tree",
+-		     key);
++		error(logopt, "key %s is not multi-mount root", root);
+ 		return 0;
+ 	}
+ 	tree = MAPENT_ROOT(base);

@@ -1,0 +1,37 @@
+autofs-5.1.6 - fix typo in open_sss_lib()
+
+From: Ian Kent <raven@themaw.net>
+
+Fix obvious typo in modules/lookup_sss.c:open_sss_lib().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 3c00184..63c6d41 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -92,6 +92,7 @@ xx/xx/2018 autofs-5.1.5
+ - add force unlink mounts and exit option.
+ - cleanup stale logpri fifo pipes on unlink and exit.
+ - fix lookup_nss_read_master() nsswicth check return.
++- fix typo in open_sss_lib().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/modules/lookup_sss.c b/modules/lookup_sss.c
+index 7859830..cc18e62 100644
+--- a/modules/lookup_sss.c
++++ b/modules/lookup_sss.c
+@@ -91,7 +91,7 @@ static int open_sss_lib(struct lookup_context *ctxt)
+ 		goto lib_names_fail;
+ 
+ 	ctxt->endautomntent = (endautomntent_t) dlsym(dh, "_sss_endautomntent");
+-	if (!ctxt->setautomntent)
++	if (!ctxt->endautomntent)
+ 		goto lib_names_fail;
+ 
+ 	return 0;

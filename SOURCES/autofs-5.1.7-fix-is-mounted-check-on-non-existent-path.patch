@@ -1,0 +1,58 @@
+autofs-5.1.7 - fix is mounted check on non existent path
+
+From: Ian Kent <raven@themaw.net>
+
+When checking if a path is a mount point the case of a non-existent path
+was not being handled.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ lib/dev-ioctl-lib.c |    3 +++
+ lib/mounts.c        |   12 +++++++++++-
+ 3 files changed, 15 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -5,6 +5,7 @@
+ - use sprintf() when constructing hosts mapent.
+ - fix mnts_remove_amdmount() uses wrong list.
+ - eliminate cache_lookup_offset() usage.
++- fix is mounted check on non existent path.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/dev-ioctl-lib.c
++++ autofs-5.1.4/lib/dev-ioctl-lib.c
+@@ -759,6 +759,9 @@ static int dev_ioctl_ismountpoint(unsign
+ 		int save_errno = errno;
+ 		free_dev_ioctl_path(param);
+ 		errno = save_errno;
++		/* Path doesn't exist */
++		if (errno == ENOENT)
++			return 0;
+ 		return -1;
+ 	}
+ 
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1645,8 +1645,18 @@ static int table_is_mounted(const char *
+ 	struct mntent mnt_wrk;
+ 	char buf[PATH_MAX * 3];
+ 	size_t mp_len = strlen(mp);
++	struct stat st;
+ 	FILE *tab;
+-	int ret = 0;
++	int ret;
++
++	ret = stat(mp, &st);
++	if (ret == -1) {
++		if (errno == ENOENT) {
++			/* Path does not exist */
++			return 0;
++		}
++		ret = 0;
++	}
+ 
+ 	if (!mp || !mp_len || mp_len >= PATH_MAX)
+ 		return 0;

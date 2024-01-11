@@ -1,0 +1,66 @@
+autofs-5.1.6 - add sss ECONREFUSED return handling
+
+From: Ian Kent <raven@themaw.net>
+
+The sss library has returned ECONNREFUSED for the case of sssd not
+running for a long time now but autofs doesn't catch it, fix that.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    9 +++++++++
+ 2 files changed, 10 insertions(+)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 5a3d785..2a45829 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -94,6 +94,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix lookup_nss_read_master() nsswicth check return.
+ - fix typo in open_sss_lib().
+ - fix sss_master_map_wait timing.
++- add sss ECONREFUSED return handling.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/modules/lookup_sss.c b/modules/lookup_sss.c
+index fbb6193..c393296 100644
+--- a/modules/lookup_sss.c
++++ b/modules/lookup_sss.c
+@@ -297,6 +297,9 @@ int lookup_read_master(struct master *master, time_t age, void *context)
+ 	if (ret) {
+ 		unsigned int retries;
+ 
++		if (ret == ECONNREFUSED)
++			return NSS_STATUS_UNKNOWN;
++
+ 		if (ret != ENOENT)
+ 			return NSS_STATUS_UNAVAIL;
+ 
+@@ -308,6 +311,8 @@ int lookup_read_master(struct master *master, time_t age, void *context)
+ 					 ctxt, ctxt->mapname, &sss_ctxt,
+ 					 retries);
+ 		if (ret) {
++			if (ret == ECONNREFUSED)
++				return NSS_STATUS_UNKNOWN;
+ 			if (ret == ENOENT)
+ 				return NSS_STATUS_NOTFOUND;
+ 			return NSS_STATUS_UNAVAIL;
+@@ -415,6 +420,8 @@ int lookup_read_map(struct autofs_point *ap, time_t age, void *context)
+ 
+ 	ret = setautomntent(ap->logopt, ctxt, ctxt->mapname, &sss_ctxt);
+ 	if (ret) {
++		if (ret == ECONNREFUSED)
++			return NSS_STATUS_UNKNOWN;
+ 		if (ret == ENOENT)
+ 			return NSS_STATUS_NOTFOUND;
+ 		return NSS_STATUS_UNAVAIL;
+@@ -525,6 +532,8 @@ static int lookup_one(struct autofs_point *ap,
+ 
+ 	ret = setautomntent(ap->logopt, ctxt, ctxt->mapname, &sss_ctxt);
+ 	if (ret) {
++		if (ret == ECONNREFUSED)
++			return NSS_STATUS_UNKNOWN;
+ 		if (ret == ENOENT)
+ 			return NSS_STATUS_NOTFOUND;
+ 		return NSS_STATUS_UNAVAIL;

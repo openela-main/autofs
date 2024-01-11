@@ -1,0 +1,96 @@
+autofs-5.1.7 - set offset parent in update_offset_entry()
+
+From: Ian Kent <raven@themaw.net>
+
+Avoid the list traversal in cache_set_parents() by setting the
+offset parent when updating the offset.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ include/automount.h |    2 +-
+ lib/cache.c         |   26 +++++++++++---------------
+ modules/parse_sun.c |    5 ++++-
+ 4 files changed, 17 insertions(+), 17 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -7,6 +7,7 @@
+ - eliminate cache_lookup_offset() usage.
+ - fix is mounted check on non existent path.
+ - simplify cache_get_parent().
++- set offset parent in update_offset_entry().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -207,7 +207,7 @@ struct mapent *cache_partial_match_wild(
+ int cache_add(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_update_offset(struct mapent_cache *mc, const char *mkey, const char *key, const char *mapent, time_t age);
+ void cache_update_negative(struct mapent_cache *mc, struct map_source *ms, const char *key, time_t timeout);
+-int cache_set_parents(struct mapent *mm);
++int cache_set_offset_parent(struct mapent_cache *mc, const char *offset);
+ int cache_update(struct mapent_cache *mc, struct map_source *ms, const char *key, const char *mapent, time_t age);
+ int cache_delete(struct mapent_cache *mc, const char *key);
+ int cache_delete_offset(struct mapent_cache *mc, const char *key);
+--- autofs-5.1.4.orig/lib/cache.c
++++ autofs-5.1.4/lib/cache.c
+@@ -834,25 +834,21 @@ static struct mapent *get_offset_parent(
+ 	return NULL;
+ }
+ 
+-int cache_set_parents(struct mapent *mm)
++int cache_set_offset_parent(struct mapent_cache *mc, const char *offset)
+ {
+-	struct list_head *multi_head, *p;
+-	struct mapent *this;
++	struct mapent *this, *parent;
+ 
+-	if (!mm->multi)
++	this = cache_lookup_distinct(mc, offset);
++	if (!this)
++		return 0;
++	if (!this->multi)
+ 		return 0;
+ 
+-	multi_head = &mm->multi->multi_list;
+-
+-	list_for_each(p, multi_head) {
+-		struct mapent *parent;
+-		this = list_entry(p, struct mapent, multi_list);
+-		parent = get_offset_parent(mm->mc, this->key);
+-		if (parent)
+-			this->parent = parent;
+-		else
+-			this->parent = mm->multi;
+-	}
++	parent = get_offset_parent(mc, offset);
++	if (parent)
++		this->parent = parent;
++	else
++		this->parent = this->multi;
+ 
+ 	return 1;
+ }
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -861,6 +861,10 @@ update_offset_entry(struct autofs_point
+ 	}
+ 
+ 	ret = cache_update_offset(mc, name, m_key, m_mapent, age);
++
++	if (!cache_set_offset_parent(mc, m_key))
++		error(ap->logopt, "failed to set offset parent");
++
+ 	if (ret == CHE_DUPLICATE) {
+ 		warn(ap->logopt, MODPREFIX
+ 		     "syntax error or duplicate offset %s -> %s", path, loc);
+@@ -1615,7 +1619,6 @@ dont_expand:
+ 		 */
+ 		if (me == me->multi)
+ 			clean_stale_multi_triggers(ap, me, NULL, NULL);
+-		cache_set_parents(me);
+ 
+ 		rv = mount_subtree(ap, me, name, NULL, options, ctxt);
+ 

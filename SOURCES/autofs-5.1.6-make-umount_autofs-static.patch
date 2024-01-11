@@ -1,0 +1,86 @@
+autofs-5.1.6 - make umount_autofs() static
+
+From: Ian Kent <raven@themaw.net>
+
+The function umount_autofs() is only called within daemon/automount.c
+so make it static.
+
+Also it's only ever called with it's force parameter true so remove
+it as well and because this parameter is always true the failure case
+when calling umount_all() never happens.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/automount.c  |   11 +++++------
+ include/automount.h |    1 -
+ 3 files changed, 6 insertions(+), 7 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -124,6 +124,7 @@ xx/xx/2018 autofs-5.1.5
+ - add a hash index to mnt_list.
+ - use mnt_list for submounts.
+ - use mnt_list for amdmounts.
++- make umount_autofs() static.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -722,7 +722,7 @@ static int umount_all(struct autofs_poin
+ 	return left;
+ }
+ 
+-int umount_autofs(struct autofs_point *ap, const char *root, int force)
++static int umount_autofs(struct autofs_point *ap, const char *root)
+ {
+ 	int ret = 0;
+ 
+@@ -737,8 +737,7 @@ int umount_autofs(struct autofs_point *a
+ 	lookup_close_lookup(ap);
+ 
+ 	if (ap->type == LKP_INDIRECT) {
+-		if (umount_all(ap, force) && !force)
+-			return -1;
++		umount_all(ap, 1);
+ 		ret = umount_autofs_indirect(ap, root);
+ 	} else
+ 		ret = umount_autofs_direct(ap);
+@@ -1867,7 +1866,7 @@ int handle_mounts_exit(struct autofs_poi
+ 	 * to check for possible recovery.
+ 	 */
+ 	if (ap->type == LKP_DIRECT) {
+-		umount_autofs(ap, NULL, 1);
++		umount_autofs(ap, NULL);
+ 		handle_mounts_cleanup(ap);
+ 		return 1;
+ 	}
+@@ -1878,7 +1877,7 @@ int handle_mounts_exit(struct autofs_poi
+ 	 * so we can continue. This can happen if a lookup
+ 	 * occurs while we're trying to umount.
+ 	 */
+-	ret = umount_autofs(ap, NULL, 1);
++	ret = umount_autofs(ap, NULL);
+ 	if (!ret) {
+ 		set_indirect_mount_tree_catatonic(ap);
+ 		handle_mounts_cleanup(ap);
+@@ -1934,7 +1933,7 @@ void *handle_mounts(void *arg)
+ 		if (!(do_force_unlink & UNLINK_AND_EXIT))
+ 			crit(ap->logopt, "mount of %s failed!", ap->path);
+ 		suc->status = 1;
+-		umount_autofs(ap, root, 1);
++		umount_autofs(ap, root);
+ 		free(root);
+ 		pthread_setcancelstate(cancel_state, NULL);
+ 		pthread_exit(NULL);
+--- autofs-5.1.4.orig/include/automount.h
++++ autofs-5.1.4/include/automount.h
+@@ -599,7 +599,6 @@ int mount_autofs_direct(struct autofs_po
+ int mount_autofs_offset(struct autofs_point *ap, struct mapent *me, const char *root, const char *offset);
+ void submount_signal_parent(struct autofs_point *ap, unsigned int success);
+ void close_mount_fds(struct autofs_point *ap);
+-int umount_autofs(struct autofs_point *ap, const char *root, int force);
+ int umount_autofs_indirect(struct autofs_point *ap, const char *root);
+ int do_umount_autofs_direct(struct autofs_point *ap, struct mapent *me);
+ int umount_autofs_direct(struct autofs_point *ap);

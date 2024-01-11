@@ -1,0 +1,96 @@
+autofs-5.1.6 - use mapname in sss context for setautomntent()
+
+From: Ian Kent <raven@themaw.net>
+
+There's no need to pass mapname seperately when calling setautomntent().
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |   18 +++++++-----------
+ 2 files changed, 8 insertions(+), 11 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 2a45829..1830730 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -95,6 +95,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix typo in open_sss_lib().
+ - fix sss_master_map_wait timing.
+ - add sss ECONREFUSED return handling.
++- use mapname in sss context for setautomntent().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/modules/lookup_sss.c b/modules/lookup_sss.c
+index c393296..c44c55d 100644
+--- a/modules/lookup_sss.c
++++ b/modules/lookup_sss.c
+@@ -206,10 +206,9 @@ int lookup_reinit(const char *mapfmt,
+ }
+ 
+ static int setautomntent(unsigned int logopt,
+-			 struct lookup_context *ctxt, const char *mapname,
+-			 void **sss_ctxt)
++			 struct lookup_context *ctxt, void **sss_ctxt)
+ {
+-	int ret = ctxt->setautomntent(mapname, sss_ctxt);
++	int ret = ctxt->setautomntent(ctxt->mapname, sss_ctxt);
+ 	if (ret) {
+ 		char buf[MAX_ERR_BUF];
+ 		char *estr = strerror_r(ret, buf, MAX_ERR_BUF);
+@@ -222,7 +221,6 @@ static int setautomntent(unsigned int logopt,
+ 
+ static int setautomntent_wait(unsigned int logopt,
+ 			      struct lookup_context *ctxt,
+-			      const char *mapname,
+ 			      void **sss_ctxt, unsigned int retries)
+ {
+ 	unsigned int retry = 0;
+@@ -234,7 +232,7 @@ static int setautomntent_wait(unsigned int logopt,
+ 		struct timespec t = { SSS_WAIT_INTERVAL, 0 };
+ 		struct timespec r;
+ 
+-		ret = ctxt->setautomntent(mapname, sss_ctxt);
++		ret = ctxt->setautomntent(ctxt->mapname, sss_ctxt);
+ 		if (ret != ENOENT)
+ 			break;
+ 
+@@ -293,7 +291,7 @@ int lookup_read_master(struct master *master, time_t age, void *context)
+ 	char *value = NULL;
+ 	int count, ret;
+ 
+-	ret = setautomntent(logopt, ctxt, ctxt->mapname, &sss_ctxt);
++	ret = setautomntent(logopt, ctxt, &sss_ctxt);
+ 	if (ret) {
+ 		unsigned int retries;
+ 
+@@ -307,9 +305,7 @@ int lookup_read_master(struct master *master, time_t age, void *context)
+ 		if (retries <= 0)
+ 			return NSS_STATUS_NOTFOUND;
+ 
+-		ret = setautomntent_wait(logopt,
+-					 ctxt, ctxt->mapname, &sss_ctxt,
+-					 retries);
++		ret = setautomntent_wait(logopt, ctxt, &sss_ctxt, retries);
+ 		if (ret) {
+ 			if (ret == ECONNREFUSED)
+ 				return NSS_STATUS_UNKNOWN;
+@@ -418,7 +414,7 @@ int lookup_read_map(struct autofs_point *ap, time_t age, void *context)
+ 		return NSS_STATUS_SUCCESS;
+ 	}
+ 
+-	ret = setautomntent(ap->logopt, ctxt, ctxt->mapname, &sss_ctxt);
++	ret = setautomntent(ap->logopt, ctxt, &sss_ctxt);
+ 	if (ret) {
+ 		if (ret == ECONNREFUSED)
+ 			return NSS_STATUS_UNKNOWN;
+@@ -530,7 +526,7 @@ static int lookup_one(struct autofs_point *ap,
+ 
+ 	mc = source->mc;
+ 
+-	ret = setautomntent(ap->logopt, ctxt, ctxt->mapname, &sss_ctxt);
++	ret = setautomntent(ap->logopt, ctxt, &sss_ctxt);
+ 	if (ret) {
+ 		if (ret == ECONNREFUSED)
+ 			return NSS_STATUS_UNKNOWN;

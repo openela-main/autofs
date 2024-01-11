@@ -1,0 +1,38 @@
+autofs-5.1.6 - fix retries check in setautomntent_wait()
+
+From: Ian Kent <raven@themaw.net>
+
+In setautomntent_wait() on exit from the retry loop retry will always
+be greater than retries if the retry limit is reached.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 7c22aa1..b3ffbb6 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -97,6 +97,7 @@ xx/xx/2018 autofs-5.1.5
+ - add sss ECONREFUSED return handling.
+ - use mapname in sss context for setautomntent().
+ - add support for new sss autofs proto version call.
++- fix retries check in setautomntent_wait().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/modules/lookup_sss.c b/modules/lookup_sss.c
+index 3819981..d65e71c 100644
+--- a/modules/lookup_sss.c
++++ b/modules/lookup_sss.c
+@@ -299,7 +299,7 @@ static int setautomntent_wait(unsigned int logopt,
+ 			*sss_ctxt = NULL;
+ 		}
+ 
+-		if (retry == retries)
++		if (retry > retries)
+ 			ret = ETIMEDOUT;
+ 
+ 		estr = strerror_r(ret, buf, MAX_ERR_BUF);

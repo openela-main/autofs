@@ -1,0 +1,60 @@
+autofs-5.1.6 - fix program map multi-mount lookup after mount fail
+
+From: Ian Kent <raven@themaw.net>
+
+For the case of a singleton multi-mount program map lookup following
+a mount fail (and the negative timeout has passed) the lookup key is
+what's expected for an indirect map key but the the root offset map
+entry already exists. This causes autofs to think it has an incorrect
+lookup key and it fails the lookup when it should take the opptunity
+to delete and update the cache entry since it's not actually in use
+yet.
+
+If a check is done to see if the lookup is for the root offset,
+deleting the entry fails because it contains an offset. Later when
+parsing is done the offset will get updated and can get out of sync
+with the entry of the multi-mount owner. That's not a problem as the
+offsets would be deleted on eventual expire but it's best to clean
+out the entry and start a fresh so the most up to date map entry
+is being used.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                |    1 +
+ modules/lookup_program.c |    7 +++++--
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -27,6 +27,7 @@
+ - rename path to m_offset in update_offset_entry().
+ - don't pass root to do_mount_autofs_offset().
+ - rename tree implementation functions.
++- fix program map multi-mount lookup after mount fail.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/lookup_program.c
++++ autofs-5.1.4/modules/lookup_program.c
+@@ -664,7 +664,7 @@ int lookup_mount(struct autofs_point *ap
+ 				 name_len, ent, ctxt->parse->context);
+ 			goto out_free;
+ 		} else {
+-			if (me->multi) {
++			if (me->multi && me->multi != me) {
+ 				cache_unlock(mc);
+ 				warn(ap->logopt, MODPREFIX
+ 				     "unexpected lookup for active multi-mount"
+@@ -674,8 +674,11 @@ int lookup_mount(struct autofs_point *ap
+ 			cache_unlock(mc);
+ 			cache_writelock(mc);
+ 			me = cache_lookup_distinct(mc, name);
+-			if (me)
++			if (me) {
++				if (me->multi)
++					cache_delete_offset_list(mc, name);
+ 				cache_delete(mc, name);
++			}
+ 			cache_unlock(mc);
+ 		}
+ 	}

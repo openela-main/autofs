@@ -1,0 +1,63 @@
+autofs-5.1.6 - remove force parameter from umount_all()
+
+From: Ian Kent <raven@themaw.net>
+
+The function umount_all() is always called with it's force parameter
+true so remove it.
+
+Because the failure case is not used make the function void as well.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    9 +++------
+ 2 files changed, 4 insertions(+), 6 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -125,6 +125,7 @@ xx/xx/2018 autofs-5.1.5
+ - use mnt_list for submounts.
+ - use mnt_list for amdmounts.
+ - make umount_autofs() static.
++- remove force parameter from umount_all().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -99,7 +99,6 @@ pthread_key_t key_thread_attempt_id = (p
+ 
+ int aquire_flag_file(void);
+ void release_flag_file(void);
+-static int umount_all(struct autofs_point *ap, int force);
+ 
+ extern struct master *master_list;
+ 
+@@ -710,16 +709,14 @@ int umount_multi(struct autofs_point *ap
+ 	return left;
+ }
+ 
+-static int umount_all(struct autofs_point *ap, int force)
++static void umount_all(struct autofs_point *ap)
+ {
+ 	int left;
+ 
+ 	left = umount_multi(ap, ap->path, 0);
+-	if (force && left)
++	if (left)
+ 		warn(ap->logopt, "could not unmount %d dirs under %s",
+ 		     left, ap->path);
+-
+-	return left;
+ }
+ 
+ static int umount_autofs(struct autofs_point *ap, const char *root)
+@@ -737,7 +734,7 @@ static int umount_autofs(struct autofs_p
+ 	lookup_close_lookup(ap);
+ 
+ 	if (ap->type == LKP_INDIRECT) {
+-		umount_all(ap, 1);
++		umount_all(ap);
+ 		ret = umount_autofs_indirect(ap, root);
+ 	} else
+ 		ret = umount_autofs_direct(ap);

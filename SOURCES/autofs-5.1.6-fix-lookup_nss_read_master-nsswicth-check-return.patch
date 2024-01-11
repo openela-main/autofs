@@ -1,0 +1,42 @@
+autofs-5.1.6 - fix lookup_nss_read_master() nsswicth check return
+
+From: Ian Kent <raven@themaw.net>
+
+When reading master map nsswicth sources the result of reading the master
+map should be returned rather than the result of the nsswitch check.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/lookup.c |    6 ++----
+ 2 files changed, 3 insertions(+), 4 deletions(-)
+
+diff --git a/CHANGELOG b/CHANGELOG
+index 52fc100..3c00184 100644
+--- a/CHANGELOG
++++ b/CHANGELOG
+@@ -91,6 +91,7 @@ xx/xx/2018 autofs-5.1.5
+ - remove command fifo on autofs mount fail.
+ - add force unlink mounts and exit option.
+ - cleanup stale logpri fifo pipes on unlink and exit.
++- fix lookup_nss_read_master() nsswicth check return.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+diff --git a/daemon/lookup.c b/daemon/lookup.c
+index d9d3a4e..2b9c7e8 100644
+--- a/daemon/lookup.c
++++ b/daemon/lookup.c
+@@ -303,10 +303,8 @@ int lookup_nss_read_master(struct master *master, time_t age)
+ 			master->read_fail = 1;
+ 
+ 		status = check_nss_result(this, result);
+-		if (status >= 0) {
+-			free_sources(&nsslist);
+-			return status;
+-		}
++		if (status >= 0)
++			break;
+ 	}
+ 
+ 	if (!list_empty(&nsslist))

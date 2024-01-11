@@ -1,0 +1,174 @@
+autofs-5.1.5 - add mount_verbose configuration option
+
+From: Lars R. Damerow <lars@pixar.com>
+
+This option makes automount pass the -v flag to mount(8).
+
+Signed-off-by: Lars R.  Damerow <lars@pixar.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG                      |    1 +
+ daemon/spawn.c                 |   20 ++++++++++++--------
+ include/defaults.h             |    2 ++
+ lib/defaults.c                 |   17 +++++++++++++++++
+ man/autofs.conf.5.in           |    4 ++++
+ redhat/autofs.conf.default.in  |    4 ++++
+ samples/autofs.conf.default.in |    4 ++++
+ 7 files changed, 44 insertions(+), 8 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -47,6 +47,7 @@ xx/xx/2018 autofs-5.1.5
+ - support strictexpire mount option.
+ - add NULL check for get_addr_string() return.
+ - use malloc(3) in spawn.c.
++- add mount_verbose configuration option.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/spawn.c
++++ autofs-5.1.4/daemon/spawn.c
+@@ -558,12 +558,14 @@ int spawn_mount(unsigned logopt, ...)
+ 	char prog[] = PATH_MOUNT;
+ 	char arg0[] = PATH_MOUNT;
+ 	char argn[] = "-n";
++	char argvr[] = "-v";
+ 	/* In case we need to use the fake option to mount */
+ 	char arg_fake[] = "-f";
+ 	unsigned int options;
+ 	unsigned int retries = MTAB_LOCK_RETRIES;
+ 	int update_mtab = 1, ret, printed = 0;
+ 	unsigned int wait = defaults_get_mount_wait();
++	int verbose = defaults_get_mount_verbose();
+ 	char buf[PATH_MAX + 1];
+ 	unsigned int argv_len;
+ 
+@@ -590,8 +592,10 @@ int spawn_mount(unsigned logopt, ...)
+ 		}
+ 	}
+ 
+-	/* Alloc 1 extra slot in case we need to use the "-f" option */
+-	argv_len = sizeof(char *) * (argc + 2);
++	/* Alloc 2 extra slots in case we need to use the "-f" or "-v" options
++	 * plus the NULL slot for end of args.
++	 */
++	argv_len = sizeof(char *) * (argc + 3);
+ 	argv = malloc(argv_len);
+ 	if (!argv) {
+ 		char buf[MAX_ERR_BUF];
+@@ -604,12 +608,12 @@ int spawn_mount(unsigned logopt, ...)
+ 	argv[0] = arg0;
+ 
+ 	va_start(arg, logopt);
+-	if (update_mtab)
+-		p = argv + 1;
+-	else {
+-		argv[1] = argn;
+-		p = argv + 2;
+-	}
++	p = argv + 1;
++	if (!update_mtab)
++		*(p++) = argn;
++	if (verbose)
++		*(p++) = argvr;
++
+ 	while ((*p = va_arg(arg, char *))) {
+ 		if (options == SPAWN_OPT_OPEN && !strcmp(*p, "-t")) {
+ 			*(++p) = va_arg(arg, char *);
+--- autofs-5.1.4.orig/include/defaults.h
++++ autofs-5.1.4/include/defaults.h
+@@ -27,6 +27,7 @@
+ #define DEFAULT_TIMEOUT			"600"
+ #define DEFAULT_MASTER_WAIT		"10"
+ #define DEFAULT_NEGATIVE_TIMEOUT	"60"
++#define DEFAULT_MOUNT_VERBOSE		"0"
+ #define DEFAULT_MOUNT_WAIT		"-1"
+ #define DEFAULT_UMOUNT_WAIT		"12"
+ #define DEFAULT_BROWSE_MODE		"1"
+@@ -166,6 +167,7 @@ unsigned int defaults_get_ldap_timeout(v
+ unsigned int defaults_get_ldap_network_timeout(void);
+ unsigned int defaults_get_mount_nfs_default_proto(void);
+ unsigned int defaults_get_append_options(void);
++unsigned int defaults_get_mount_verbose(void);
+ unsigned int defaults_get_mount_wait(void);
+ unsigned int defaults_get_umount_wait(void);
+ const char *defaults_get_auth_conf_file(void);
+--- autofs-5.1.4.orig/lib/defaults.c
++++ autofs-5.1.4/lib/defaults.c
+@@ -68,6 +68,7 @@
+ 
+ #define NAME_MOUNT_NFS_DEFAULT_PROTOCOL	"mount_nfs_default_protocol"
+ #define NAME_APPEND_OPTIONS		"append_options"
++#define NAME_MOUNT_VERBOSE		"mount_verbose"
+ #define NAME_MOUNT_WAIT			"mount_wait"
+ #define NAME_UMOUNT_WAIT		"umount_wait"
+ #define NAME_AUTH_CONF_FILE		"auth_conf_file"
+@@ -328,6 +329,11 @@ static int conf_load_autofs_defaults(voi
+ 	if (ret == CFG_FAIL)
+ 		goto error;
+ 
++	ret = conf_update(sec, NAME_MOUNT_VERBOSE,
++			  DEFAULT_MOUNT_VERBOSE, CONF_ENV);
++	if (ret == CFG_FAIL)
++		goto error;
++
+ 	ret = conf_update(sec, NAME_MOUNT_WAIT,
+ 			  DEFAULT_MOUNT_WAIT, CONF_ENV);
+ 	if (ret == CFG_FAIL)
+@@ -1780,6 +1786,17 @@ unsigned int defaults_get_append_options
+ 
+ 	return res;
+ }
++
++unsigned int defaults_get_mount_verbose(void)
++{
++	long res;
++
++	res = conf_get_yesno(autofs_gbl_sec, NAME_MOUNT_VERBOSE);
++	if (res < 0)
++		res = atoi(DEFAULT_MOUNT_VERBOSE);
++
++	return res;
++}
+ 
+ unsigned int defaults_get_mount_wait(void)
+ {
+--- autofs-5.1.4.orig/man/autofs.conf.5.in
++++ autofs-5.1.4/man/autofs.conf.5.in
+@@ -41,6 +41,10 @@ Set the default timeout for caching fail
+ 60). If the equivalent command line option is given it will override this
+ setting.
+ .TP
++.B mount_verbose
++.br
++Use the verbose flag when spawning mount(8) (program default "no").
++.TP
+ .B mount_wait
+ .br
+ Set the default time to wait for a response from a spawned mount(8)
+--- autofs-5.1.4.orig/redhat/autofs.conf.default.in
++++ autofs-5.1.4/redhat/autofs.conf.default.in
+@@ -26,6 +26,10 @@ timeout = 300
+ #
+ #negative_timeout = 60
+ #
++# mount_verbose - use the -v flag when calling mount(8).
++#
++#mount_verbose = no
++#
+ # mount_wait - time to wait for a response from mount(8).
+ # 	       Setting this timeout can cause problems when
+ # 	       mount would otherwise wait for a server that
+--- autofs-5.1.4.orig/samples/autofs.conf.default.in
++++ autofs-5.1.4/samples/autofs.conf.default.in
+@@ -26,6 +26,10 @@ timeout = 300
+ #
+ #negative_timeout = 60
+ #
++# mount_verbose - use the -v flag when calling mount(8).
++#
++#mount_verbose = no
++#
+ # mount_wait - time to wait for a response from mount(8).
+ # 	       Setting this timeout can cause problems when
+ # 	       mount would otherwise wait for a server that

@@ -1,0 +1,225 @@
+autofs-5.1.6 - add helper to construct mount point path
+
+From: Ian Kent <raven@themaw.net>
+
+Add convenience helper to construct mount point path.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG               |    1 +
+ include/mounts.h        |    3 +++
+ lib/mounts.c            |   23 +++++++++++++++++++++++
+ modules/mount_bind.c    |   19 +++++--------------
+ modules/mount_changer.c |   19 +++++--------------
+ modules/mount_ext2.c    |   19 +++++--------------
+ modules/mount_generic.c |   19 +++++--------------
+ modules/mount_nfs.c     |   21 ++++++++-------------
+ 8 files changed, 55 insertions(+), 69 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -135,6 +135,7 @@ xx/xx/2018 autofs-5.1.5
+ - move submount check into conditional_alarm_add().
+ - move lib/master.c to daemon/master.c.
+ - use master_list_empty() for list empty check.
++- add helper to construct mount point path.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -94,6 +94,9 @@ unsigned int linux_version_code(void);
+ int check_nfs_mount_version(struct nfs_mount_vers *, struct nfs_mount_vers *);
+ extern unsigned int nfs_mount_uses_string_options;
+ 
++int mount_fullpath(char *fullpath, size_t max_len,
++		   const char *root, const char *name);
++
+ struct amd_entry;
+ 
+ struct substvar *addstdenv(struct substvar *sv, const char *prefix);
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -339,6 +339,29 @@ int check_nfs_mount_version(struct nfs_m
+ }
+ #endif
+ 
++int mount_fullpath(char *fullpath, size_t max_len,
++		   const char *root, const char *name)
++{
++	int last, len;
++
++	last = strlen(root) - 1;
++
++	/* Root offset of multi-mount or direct or offset mount.
++	 * Direct or offset mount, name (or root) is absolute path.
++	 */
++	if (root[last] == '/' || *name == '/')
++		len = snprintf(fullpath, max_len, "%s", root);
++	else
++		len = snprintf(fullpath, max_len, "%s/%s", root, name);
++
++	if (len >= max_len)
++		return 0;
++
++	fullpath[len] = '\0';
++
++	return len;
++}
++
+ static char *set_env_name(const char *prefix, const char *name, char *buf)
+ {
+ 	size_t len;
+--- autofs-5.1.4.orig/modules/mount_bind.c
++++ autofs-5.1.4/modules/mount_bind.c
+@@ -122,21 +122,12 @@ int mount_mount(struct autofs_point *ap,
+ 		}
+ 	}
+ 
+-	/* Root offset of multi-mount */
+-	len = strlen(root);
+-	if (root[len - 1] == '/') {
+-		len = snprintf(fullpath, len, "%s", root);
+-	} else if (*name == '/') {
+-		/*
+-		 * Direct or offset mount, name is absolute path so
+-		 * don't use root (but with move mount changes root
+-		 * is now the same as name).
+-		 */
+-		len = sprintf(fullpath, "%s", root);
+-	} else {
+-		len = sprintf(fullpath, "%s/%s", root, name);
++	len = mount_fullpath(fullpath, PATH_MAX, root, name);
++	if (!len) {
++		error(ap->logopt,
++		      MODPREFIX "mount point path too long");
++		return 1;
+ 	}
+-	fullpath[len] = '\0';
+ 
+ 	i = len;
+ 	while (--i > 0 && fullpath[i] == '/')
+--- autofs-5.1.4.orig/modules/mount_changer.c
++++ autofs-5.1.4/modules/mount_changer.c
+@@ -59,21 +59,12 @@ int mount_mount(struct autofs_point *ap,
+ 
+ 	fstype = "iso9660";
+ 
+-	/* Root offset of multi-mount */
+-	len = strlen(root);
+-	if (root[len - 1] == '/') {
+-		len = snprintf(fullpath, len, "%s", root);
+-	} else if (*name == '/') {
+-		/*
+-		 * Direct or offset mount, name is absolute path so
+-		 * don't use root (but with move mount changes root
+-		 * is now the same as name).
+-		 */
+-		len = sprintf(fullpath, "%s", root);
+-	} else {
+-		len = sprintf(fullpath, "%s/%s", root, name);
++	len = mount_fullpath(fullpath, PATH_MAX, root, name);
++	if (!len) {
++		error(ap->logopt,
++		      MODPREFIX "mount point path too long");
++		return 1;
+ 	}
+-	fullpath[len] = '\0';
+ 
+ 	debug(ap->logopt, MODPREFIX "calling umount %s", what);
+ 
+--- autofs-5.1.4.orig/modules/mount_ext2.c
++++ autofs-5.1.4/modules/mount_ext2.c
+@@ -55,21 +55,12 @@ int mount_mount(struct autofs_point *ap,
+ 	if (defaults_get_mount_verbose())
+ 		mountlog = &log_info;
+ 
+-	/* Root offset of multi-mount */
+-	len = strlen(root);
+-	if (root[len - 1] == '/') {
+-		len = snprintf(fullpath, len, "%s", root);
+-	} else if (*name == '/') {
+-		/*
+-		 * Direct or offset mount, name is absolute path so
+-		 * don't use root (but with move mount changes root
+-		 * is now the same as name).
+-		 */
+-		len = sprintf(fullpath, "%s", root);
+-	} else {
+-		len = sprintf(fullpath, "%s/%s", root, name);
++	len = mount_fullpath(fullpath, PATH_MAX, root, name);
++	if (!len) {
++		error(ap->logopt,
++		      MODPREFIX "mount point path too long");
++		return 1;
+ 	}
+-	fullpath[len] = '\0';
+ 
+ 	debug(ap->logopt, MODPREFIX "calling mkdir_path %s", fullpath);
+ 
+--- autofs-5.1.4.orig/modules/mount_generic.c
++++ autofs-5.1.4/modules/mount_generic.c
+@@ -54,21 +54,12 @@ int mount_mount(struct autofs_point *ap,
+ 	if (defaults_get_mount_verbose())
+ 		mountlog = &log_info;
+ 
+-	/* Root offset of multi-mount */
+-	len = strlen(root);
+-	if (root[len - 1] == '/') {
+-		len = snprintf(fullpath, len, "%s", root);
+-	} else if (*name == '/') {
+-		/*
+-		 * Direct or offset mount, name is absolute path so
+-		 * don't use root (but with move mount changes root
+-		 * is now the same as name).
+-		 */
+-		len = sprintf(fullpath, "%s", root);
+-	} else {
+-		len = sprintf(fullpath, "%s/%s", root, name);
++	len = mount_fullpath(fullpath, PATH_MAX, root, name);
++	if (!len) {
++		error(ap->logopt,
++		      MODPREFIX "mount point path too long");
++		return 1;
+ 	}
+-	fullpath[len] = '\0';
+ 
+ 	debug(ap->logopt, MODPREFIX "calling mkdir_path %s", fullpath);
+ 
+--- autofs-5.1.4.orig/modules/mount_nfs.c
++++ autofs-5.1.4/modules/mount_nfs.c
+@@ -212,6 +212,14 @@ int mount_mount(struct autofs_point *ap,
+ 			 nfsoptions, nobind, nosymlink, ro);
+ 	}
+ 
++	/* Construct mount point directory */
++	len = mount_fullpath(fullpath, PATH_MAX, root, name);
++	if (!len) {
++		error(ap->logopt,
++		      MODPREFIX "mount point path too long");
++		return 1;
++	}
++
+ 	if (!parse_location(ap->logopt, &hosts, what, flags)) {
+ 		info(ap->logopt, MODPREFIX "no hosts available");
+ 		return 1;
+@@ -266,19 +274,6 @@ dont_probe:
+ 		return 1;
+ 	}
+ 
+-	/* Construct and perhaps create mount point directory */
+-
+-	/* Root offset of multi-mount */
+-	len = strlen(root);
+-	if (root[len - 1] == '/') {
+-		len = snprintf(fullpath, len, "%s", root);
+-	} else if (*name == '/') {
+-		len = sprintf(fullpath, "%s", root);
+-	} else {
+-		len = sprintf(fullpath, "%s/%s", root, name);
+-	}
+-	fullpath[len] = '\0';
+-
+ 	debug(ap->logopt, MODPREFIX "calling mkdir_path %s", fullpath);
+ 
+ 	status = mkdir_path(fullpath, mp_mode);

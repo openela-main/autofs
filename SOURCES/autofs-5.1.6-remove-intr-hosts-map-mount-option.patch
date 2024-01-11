@@ -1,0 +1,113 @@
+autofs-5.1.6 - remove intr hosts map mount option
+
+From: Ian Kent <raven@themaw.net>
+
+Don't use the intr option on NFS mounts by default, it's been ignored
+by the kernel for a long time now.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ man/auto.master.5.in |    4 ++--
+ man/autofs.5         |    4 ++--
+ modules/parse_sun.c  |    9 +++------
+ samples/auto.misc    |    2 +-
+ samples/auto.net     |    2 +-
+ 6 files changed, 10 insertions(+), 12 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -77,6 +77,7 @@
+ - add missing description of null map option.
+ - fix empty mounts list return from unlink_mount_tree().
+ - fix nonstrict offset mount fail handling.
++- remove intr hosts map mount option.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/man/auto.master.5.in
++++ autofs-5.1.4/man/auto.master.5.in
+@@ -260,8 +260,8 @@ For example, with an entry in the master
+ accessing /net/myserver will mount exports from myserver on directories below
+ /net/myserver.
+ .P
+-NOTE: mounts done from a hosts map will be mounted with the "nosuid,nodev,intr" options
+-unless overridden by explicitly specifying the "suid", "dev" or "nointr" options in the
++NOTE: mounts done from a hosts map will be mounted with the "nosuid,nodev" options
++unless overridden by explicitly specifying the "suid", "dev" options in the
+ master map entry.
+ .SH BUILTIN MAP \-null
+ If "\-null" is given as the map it is used to tell automount(8) to ignore a subsequent
+--- autofs-5.1.4.orig/man/autofs.5
++++ autofs-5.1.4/man/autofs.5
+@@ -86,13 +86,13 @@ Indirect map:
+ .RS +.2i
+ .ta 1.0i 3.0i
+ .nf
+-kernel	\-ro,soft,intr	ftp.kernel.org:/pub/linux
++kernel	\-ro,soft	ftp.kernel.org:/pub/linux
+ boot	\-fstype=ext2	:/dev/hda1
+ windoze	\-fstype=smbfs	://windoze/c
+ removable	\-fstype=ext2	:/dev/hdd
+ cd	\-fstype=iso9660,ro	:/dev/hdc
+ floppy	\-fstype=auto	:/dev/fd0
+-server	\-rw,hard,intr	/ \-ro myserver.me.org:/ \\
++server	\-rw,hard	/ \-ro myserver.me.org:/ \\
+ 			/usr myserver.me.org:/usr \\
+ 			/home myserver.me.org:/home
+ .fi
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -628,10 +628,9 @@ static int sun_mount(struct autofs_point
+ 			int len = strlen(options);
+ 			int suid = strstr(options, "suid") ? 0 : 7;
+ 			int dev = strstr(options, "dev") ? 0 : 6;
+-			int nointr = strstr(options, "nointr") ? 0 : 5;
+ 
+-			if (suid || dev || nointr) {
+-				char *tmp = alloca(len + suid + dev + nointr + 1);
++			if (suid || dev) {
++				char *tmp = alloca(len + suid + dev + 1);
+ 				if (!tmp) {
+ 					error(ap->logopt, MODPREFIX
+ 					      "alloca failed for options");
+@@ -645,8 +644,6 @@ static int sun_mount(struct autofs_point
+ 					strcat(tmp, ",nosuid");
+ 				if (dev)
+ 					strcat(tmp, ",nodev");
+-				if (nointr)
+-					strcat(tmp, ",intr");
+ 				options = tmp;
+ 			}
+ 		} else {
+@@ -658,7 +655,7 @@ static int sun_mount(struct autofs_point
+ 					return -1;
+ 				return 1;
+ 			}
+-			strcpy(tmp, "nosuid,nodev,intr");
++			strcpy(tmp, "nosuid,nodev");
+ 			options = tmp;
+ 		}
+ 	}
+--- autofs-5.1.4.orig/samples/auto.misc
++++ autofs-5.1.4/samples/auto.misc
+@@ -6,7 +6,7 @@
+ cd		-fstype=iso9660,ro,nosuid,nodev	:/dev/cdrom
+ 
+ # the following entries are samples to pique your imagination
+-#linux		-ro,soft,intr		ftp.example.org:/pub/linux
++#linux		-ro,soft		ftp.example.org:/pub/linux
+ #boot		-fstype=ext2		:/dev/hda1
+ #floppy		-fstype=auto		:/dev/fd0
+ #floppy		-fstype=ext2		:/dev/fd0
+--- autofs-5.1.4.orig/samples/auto.net
++++ autofs-5.1.4/samples/auto.net
+@@ -9,7 +9,7 @@ key="$1"
+ 
+ # add "nosymlink" here if you want to suppress symlinking local filesystems
+ # add "nonstrict" to make it OK for some filesystems to not mount
+-opts="-fstype=nfs,hard,intr,nodev,nosuid"
++opts="-fstype=nfs,hard,nodev,nosuid"
+ 
+ for P in /bin /sbin /usr/bin /usr/sbin
+ do

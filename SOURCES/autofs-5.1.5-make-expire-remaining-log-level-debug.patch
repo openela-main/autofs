@@ -1,0 +1,55 @@
+autofs-5.1.5 - make expire remaining log level debug
+
+From: Ian Kent <raven@themaw.net>
+
+The log message listing the remaining mounts should be log level
+debug not info.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG         |    1 +
+ daemon/direct.c   |    2 +-
+ daemon/indirect.c |    4 ++--
+ 3 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -50,6 +50,7 @@ xx/xx/2018 autofs-5.1.5
+ - add mount_verbose configuration option.
+ - optionally log mount requestor process info.
+ - log mount call arguments if mount_verbose is set.
++- make expire remaining log level debug.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -990,7 +990,7 @@ void *expire_proc_direct(void *arg)
+ 	pthread_cleanup_pop(1);
+ 
+ 	if (left)
+-		info(ap->logopt, "%d remaining in %s", left, ap->path);
++		debug(ap->logopt, "%d remaining in %s", left, ap->path);
+ 
+ 	ec.status = left;
+ 
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -578,7 +578,7 @@ void *expire_proc_indirect(void *arg)
+ 	pthread_cleanup_pop(1);
+ 
+ 	if (submnts)
+-		info(ap->logopt,
++		debug(ap->logopt,
+ 		     "%d submounts remaining in %s", submnts, ap->path);
+ 
+ 	/* 
+@@ -586,7 +586,7 @@ void *expire_proc_indirect(void *arg)
+ 	 * words) the umounts are done by the time we reach here
+ 	 */
+ 	if (count)
+-		info(ap->logopt, "%d remaining in %s", count, ap->path);
++		debug(ap->logopt, "%d remaining in %s", count, ap->path);
+ 
+ 	ec.status = left;
+ 

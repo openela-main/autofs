@@ -1,0 +1,34 @@
+autofs-5.1.7 - fix mnts_remove_amdmount() uses wrong list
+
+From: Ian Kent <raven@themaw.net>
+
+Function mnts_remove_amdmount() uses the wrong list when removing an
+amd mount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -3,6 +3,7 @@
+ - remove mount.x and rpcgen dependencies.
+ - dont use realloc in host exports list processing.
+ - use sprintf() when constructing hosts mapent.
++- fix mnts_remove_amdmount() uses wrong list.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -1124,7 +1124,7 @@ void mnts_remove_amdmount(const char *mp
+ 	if (!(this && this->flags & MNTS_AMD_MOUNT))
+ 		goto done;
+ 	this->flags &= ~MNTS_AMD_MOUNT;
+-	list_del_init(&this->submount);
++	list_del_init(&this->amdmount);
+ 	if (this->ext_mp) {
+ 		free(this->ext_mp);
+ 		this->ext_mp = NULL;

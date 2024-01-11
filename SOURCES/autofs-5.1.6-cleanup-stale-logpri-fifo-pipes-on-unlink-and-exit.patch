@@ -1,0 +1,101 @@
+autofs-5.1.6 - cleanup stale logpri fifo pipes on unlink and exit
+
+From: Ian Kent <raven@themaw.net>
+
+If the unlink and exit option is given then stale fifo pipe files
+need to be cleaned up since the entire tree of mounts below autofs
+managed directories will be unlinked as well as the autofs mounts
+themselves.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |   53 +++++++++++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 52 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -90,6 +90,7 @@ xx/xx/2018 autofs-5.1.5
+ - improve force unlink option description.
+ - remove command fifo on autofs mount fail.
+ - add force unlink mounts and exit option.
++- cleanup stale logpri fifo pipes on unlink and exit.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -60,7 +60,8 @@ unsigned int nfs_mount_uses_string_optio
+ static struct nfs_mount_vers vers, check = {1, 1, 1};
+ 
+ /* autofs fifo name prefix */
+-const char *fifodir = AUTOFS_FIFO_DIR "/autofs.fifo";
++#define FIFO_NAME_PREFIX "autofs.fifo"
++const char *fifodir = AUTOFS_FIFO_DIR "/" FIFO_NAME_PREFIX;
+ 
+ const char *global_options;		/* Global option, from command line */
+ 
+@@ -887,6 +888,48 @@ out_free:
+ 	return ret;
+ }
+ 
++static void cleanup_stale_logpri_fifo_pipes(void)
++{
++	size_t prefix_len = strlen(FIFO_NAME_PREFIX);
++	char *dir = AUTOFS_FIFO_DIR;
++	size_t dir_len = strlen(dir);
++	struct dirent *dent;
++	DIR *dfd;
++	int ret;
++
++	dfd = opendir(dir);
++	if (!dfd) {
++		warn(LOGOPT_ANY, "failed to open fifo dir %s", dir);
++		return;
++	}
++
++	while ((dent = readdir(dfd))) {
++		char fifo_path[PATH_MAX];
++
++		if (!(dent->d_type & DT_FIFO))
++			continue;
++		if (strncmp(FIFO_NAME_PREFIX, dent->d_name, prefix_len))
++			continue;
++		if ((dir_len + 1 + strlen(dent->d_name)) >= PATH_MAX) {
++			warn(LOGOPT_ANY, "fifo path too long for buffer");
++			continue;
++		}
++
++		strcpy(fifo_path, dir);
++		strcat(fifo_path, "/");
++		strcat(fifo_path, dent->d_name);
++
++		ret = unlink(fifo_path);
++		if (ret == -1) {
++			char buf[MAX_ERR_BUF];
++			char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++			warn(LOGOPT_ANY, "unlink of fifo failed: %s", estr);
++		}
++	}
++
++	closedir(dfd);
++}
++
+ static void handle_fifo_message(struct autofs_point *ap, int fd)
+ {
+ 	int ret;
+@@ -2670,7 +2713,13 @@ int main(int argc, char *argv[])
+ 		}
+ 	}
+ 
+-	if (!(do_force_unlink & UNLINK_AND_EXIT)) {
++	/* If the option to unlink all autofs mounts and exit has
++	 * been given remove logpri fifo files as all the  mounts
++	 * will be detached leaving them stale.
++	 */
++	if (do_force_unlink & UNLINK_AND_EXIT)
++		cleanup_stale_logpri_fifo_pipes();
++	else {
+ 		/*
+ 		 * Mmm ... reset force unlink umount so we don't also do
+ 		 * this in future when we receive a HUP signal.

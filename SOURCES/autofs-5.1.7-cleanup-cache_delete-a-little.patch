@@ -1,0 +1,60 @@
+autofs-5.1.7 - cleanup cache_delete() a little
+
+From: Ian Kent <raven@themaw.net>
+
+There's no reason to use local function storage for the passed in key
+just use the given key.
+
+Also, if there's no hash array entry for the key then there's no cache
+entry so don't return a fail for this case.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG   |    1 +
+ lib/cache.c |   11 +++--------
+ 2 files changed, 4 insertions(+), 8 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -23,6 +23,7 @@
+ - eliminate some strlen calls in offset handling.
+ - don't add offset mounts to mounted mounts table.
+ - reduce umount EBUSY check delay.
++- cleanup cache_delete() a little.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/cache.c
++++ autofs-5.1.4/lib/cache.c
+@@ -887,20 +887,15 @@ int cache_delete(struct mapent_cache *mc
+ 	struct mapent *me = NULL, *pred;
+ 	u_int32_t hashval = hash(key, mc->size);
+ 	int ret = CHE_OK;
+-	char this[PATH_MAX];
+-
+-	strcpy(this, key);
+ 
+ 	me = mc->hash[hashval];
+-	if (!me) {
+-		ret = CHE_FAIL;
++	if (!me)
+ 		goto done;
+-	}
+ 
+ 	while (me->next != NULL) {
+ 		pred = me;
+ 		me = me->next;
+-		if (strcmp(this, me->key) == 0) {
++		if (strcmp(key, me->key) == 0) {
+ 			struct stack *s = me->stack;
+ 			if (me->multi && !list_empty(&me->multi_list)) {
+ 				ret = CHE_FAIL;
+@@ -929,7 +924,7 @@ int cache_delete(struct mapent_cache *mc
+ 	if (!me)
+ 		goto done;
+ 
+-	if (strcmp(this, me->key) == 0) {
++	if (strcmp(key, me->key) == 0) {
+ 		struct stack *s = me->stack;
+ 		if (me->multi && !list_empty(&me->multi_list)) {
+ 			ret = CHE_FAIL;

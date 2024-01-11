@@ -1,0 +1,36 @@
+autofs-5.1.6 - remove logpri fifo on autofs mount fail
+
+From: Ian Kent <raven@themaw.net>
+
+Don't leave log priority command fifo file around on autofs mount failure.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -88,6 +88,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix incorrect logical compare in unlink_mount_tree().
+ - use bit flag for force unlink mounts.
+ - improve force unlink option description.
++- remove command fifo on autofs mount fail.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -1161,8 +1161,10 @@ static int mount_autofs(struct autofs_po
+ 	else
+ 		status = mount_autofs_indirect(ap, root);
+ 
+-	if (status < 0)
++	if (status < 0) {
++		destroy_logpri_fifo(ap);
+ 		return -1;
++	}
+ 
+ 	st_add_task(ap, ST_READY);
+ 

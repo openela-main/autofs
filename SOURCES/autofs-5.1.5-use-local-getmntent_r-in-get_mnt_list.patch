@@ -1,0 +1,53 @@
+autofs-5.1.5 - use local getmntent_r() in get_mnt_list()
+
+From: Ian Kent <raven@themaw.net>
+
+Change get_mnt_list() to use the local getmntent_r() instead of
+the glibc version so that if glibc is changed to support the
+autofs "ignore" hint automount(8) won't be affected.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -73,6 +73,7 @@ xx/xx/2018 autofs-5.1.5
+ - use single unlink_umount_tree() for both direct and indirect mounts.
+ - move unlink_mount_tree() to lib/mounts.c.
+ - use local_getmntent_r() for unlink_mount_tree().
++- use local getmntent_r() in get_mnt_list().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -956,14 +956,14 @@ struct mnt_list *get_mnt_list(const char
+ 	if (!path || !pathlen || pathlen > PATH_MAX)
+ 		return NULL;
+ 
+-	tab = open_setmntent_r(_PROC_MOUNTS);
++	tab = open_fopen_r(_PROC_MOUNTS);
+ 	if (!tab) {
+ 		char *estr = strerror_r(errno, buf, PATH_MAX - 1);
+-		logerr("setmntent: %s", estr);
++		logerr("fopen: %s", estr);
+ 		return NULL;
+ 	}
+ 
+-	while ((mnt = getmntent_r(tab, &mnt_wrk, buf, PATH_MAX * 3))) {
++	while ((mnt = local_getmntent_r(tab, &mnt_wrk, buf, PATH_MAX * 3))) {
+ 		len = strlen(mnt->mnt_dir);
+ 
+ 		if ((!include && len <= pathlen) ||
+@@ -1020,7 +1020,7 @@ struct mnt_list *get_mnt_list(const char
+ 				ent->flags |= MNTS_OFFSET;
+ 		}
+ 	}
+-	endmntent(tab);
++	fclose(tab);
+ 
+ 	return list;
+ }

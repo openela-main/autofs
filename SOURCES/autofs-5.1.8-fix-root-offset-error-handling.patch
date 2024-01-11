@@ -1,0 +1,86 @@
+autofs-5.1.8 - fix root offset error handling
+
+From: Ian Kent <raven@themaw.net>
+
+If mounting the root or offsets of a multi-mount root fails any mounts
+done so far need to be umounted and the multi-mount offset tree deleted
+so it can be created cleanly and possibly mounted the next time it's
+triggered.
+
+Also, if a subtree that is not the multi-mount root fails the expire
+alarm needs to be re-instated so other subtrees (at least the root)
+will continue to expire.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/direct.c     |   11 ++++++++++-
+ modules/parse_sun.c |    6 ++++++
+ 3 files changed, 17 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -83,6 +83,7 @@
+ - improve descriptor open error reporting.
+ - fix double quoting in auto.smb.
+ - fix double quoting of ampersand in auto.smb as well.
++- fix root offset error handling.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -1163,6 +1163,7 @@ static void *do_mount_direct(void *arg)
+ 	struct ioctl_ops *ops = get_ioctl_ops();
+ 	struct pending_args *args, mt;
+ 	struct autofs_point *ap;
++	struct mapent *me;
+ 	struct stat st;
+ 	int status, state;
+ 
+@@ -1226,7 +1227,6 @@ static void *do_mount_direct(void *arg)
+ 	pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, &state);
+ 	if (status) {
+ 		struct mnt_list *sbmnt;
+-		struct mapent *me;
+ 		struct statfs fs;
+ 		unsigned int close_fd = 0;
+ 		unsigned int flags = MNTS_DIRECT|MNTS_MOUNTED;
+@@ -1267,6 +1267,15 @@ static void *do_mount_direct(void *arg)
+ 			       mt.ioctlfd, mt.wait_queue_token, -ENOENT);
+ 		ops->close(ap->logopt, mt.ioctlfd);
+ 		info(ap->logopt, "failed to mount %s", mt.name);
++
++		/* If this is a multi-mount subtree mount failure
++		 * ensure the tree continues to expire.
++		 */
++		cache_readlock(mt.mc);
++		me = cache_lookup_distinct(mt.mc, mt.name);
++		if (me && IS_MM(me) && !IS_MM_ROOT(me))
++			conditional_alarm_add(ap, ap->exp_runfreq);
++		cache_unlock(mt.mc);
+ 	}
+ 	pthread_setcancelstate(state, NULL);
+ 
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -1125,6 +1125,9 @@ static int mount_subtree(struct autofs_p
+ 		if (!len) {
+ 			warn(ap->logopt, "path loo long");
+ 			cache_unlock(mc);
++			cache_writelock(mc);
++			tree_mapent_delete_offsets(mc, name);
++			cache_unlock(mc);
+ 			return 1;
+ 		}
+ 		key[len] = '/';
+@@ -1169,6 +1172,9 @@ static int mount_subtree(struct autofs_p
+ 				cache_unlock(mc);
+ 				error(ap->logopt, MODPREFIX
+ 					 "failed to mount offset triggers");
++				cache_writelock(mc);
++				tree_mapent_delete_offsets(mc, name);
++				cache_unlock(mc);
+ 				return 1;
+ 			}
+ 		}

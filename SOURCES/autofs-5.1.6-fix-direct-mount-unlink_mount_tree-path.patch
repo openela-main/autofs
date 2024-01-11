@@ -1,0 +1,40 @@
+autofs-5.1.6 - fix direct mount unlink_mount_tree() path
+
+From: Ian Kent <raven@themaw.net>
+
+Oops!
+
+The path used if unlink_mount_tree() is called for direct mount entries
+is not correct, fix it.
+
+Note: the mount table handling has changed and using the --force option
+with automount when direct mount maps are large will result in somewhat
+larger overhead.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/direct.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -83,6 +83,7 @@ xx/xx/2018 autofs-5.1.5
+ - fix autofs mount options construction.
+ - mount_nfs.c fix local rdma share not mounting.
+ - fix incorrect systemctl command syntax in autofs(8).
++- fix direct mount unlink_mount_tree() path.
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/daemon/direct.c
++++ autofs-5.1.4/daemon/direct.c
+@@ -311,7 +311,7 @@ int do_mount_autofs_direct(struct autofs
+ 			return 0;
+ 		}
+ 
+-		ret = unlink_mount_tree(ap, ap->path);
++		ret = unlink_mount_tree(ap, me->key);
+ 		if (!ret) {
+ 			error(ap->logopt,
+ 			     "already mounted as other than autofs "

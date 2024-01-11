@@ -1,0 +1,47 @@
+autofs-5.1.6 - fix empty mounts list return from unlink_mount_tree()
+
+From: Ian Kent <raven@themaw.net>
+
+If there are no appropriate mounts found by get_mnt_list() then
+unlink_mount_tree() should return 1 not 0 since if there are no
+mounts to umount this shouldn't cause a failure return.
+
+Also, if a real error occurs in get_mnt_list() we should check for
+it and return a failure from unlink_mount_tree() since that would
+be mount table not found or out of memory. If that's ignored things
+would only get worse from that point.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    8 ++++++--
+ 2 files changed, 7 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -75,6 +75,7 @@
+ - fix direct mount deadlock.
+ - fix lookup_prune_one_cache() refactoring change.
+ - add missing description of null map option.
++- fix empty mounts list return from unlink_mount_tree().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2115,9 +2115,13 @@ int unlink_mount_tree(struct autofs_poin
+ 	struct mnt_list *mnts, *mnt;
+ 	int rv, ret = 1;
+ 
++	errno = 0;
+ 	mnts = get_mnt_list(mp, 1);
+-	if (!mnts)
+-		return 0;
++	if (!mnts) {
++		if (errno)
++			return 0;
++		return 1;
++	}
+ 
+ 	for (mnt = mnts; mnt; mnt = mnt->next) {
+ 		if (mnt->flags & MNTS_AUTOFS)

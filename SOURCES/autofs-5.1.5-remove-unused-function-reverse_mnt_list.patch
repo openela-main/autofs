@@ -1,0 +1,63 @@
+autofs-5.1.5 - remove unused function reverse_mnt_list()
+
+From: Ian Kent <raven@themaw.net>
+
+This function is not used, remove it.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ include/mounts.h |    1 -
+ lib/mounts.c     |   21 ---------------------
+ 3 files changed, 1 insertion(+), 22 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -56,6 +56,7 @@ xx/xx/2018 autofs-5.1.5
+ - also use strictexpire for offsets.
+ - change expire type naming to better reflect usage.
+ - remove unused function has_fstab_option().
++- remove unused function reverse_mnt_list().
+ 
+ 19/12/2017 autofs-5.1.4
+ - fix spec file url.
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -100,7 +100,6 @@ int ext_mount_add(struct list_head *, co
+ int ext_mount_remove(struct list_head *, const char *);
+ int ext_mount_inuse(const char *);
+ struct mnt_list *get_mnt_list(const char *table, const char *path, int include);
+-struct mnt_list *reverse_mnt_list(struct mnt_list *list);
+ void free_mnt_list(struct mnt_list *list);
+ int is_mounted(const char *table, const char *path, unsigned int type);
+ void tree_free_mnt_tree(struct mnt_list *tree);
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -894,27 +894,6 @@ struct mnt_list *get_mnt_list(const char
+ 	return list;
+ }
+ 
+-/*
+- * Reverse a list of mounts
+- */
+-struct mnt_list *reverse_mnt_list(struct mnt_list *list)
+-{
+-	struct mnt_list *next, *last;
+-
+-	if (!list)
+-		return NULL;
+-
+-	next = list;
+-	last = NULL;
+-	while (next) {
+-		struct mnt_list *this = next;
+-		next = this->next;
+-		this->next = last;
+-		last = this;
+-	}
+-	return last;
+-}
+-
+ void free_mnt_list(struct mnt_list *list)
+ {
+ 	struct mnt_list *next;

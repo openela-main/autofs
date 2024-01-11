@@ -1,0 +1,36 @@
+autofs-5.1.6 - fix double quoting in auto.smb
+
+From: Ian Kent <raven@themaw.net>
+
+The example program mount script installed to /etc/auto.smb incorrectly
+adds a quote for the trailing dollar of special Windows mounts. But they
+are already surrounded by double quotes. This may have been handled by
+mount.cifs at some point but it's failing now.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ samples/auto.smb |    2 --
+ 2 files changed, 1 insertion(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/samples/auto.smb
++++ autofs-5.1.4/samples/auto.smb
+@@ -75,8 +75,6 @@ $SMBCLIENT $smbopts -gL "$key" 2>/dev/nu
+ 		  dir = $2
+ 		  loc = $2
+ 		  # Enclose mount dir and location in quotes
+-		  # Double quote "$" in location as it is special
+-		  gsub(/\$$/, "\\$", loc);
+ 		  gsub(/\&/,"\\\\&",loc)
+ 		  print " \\\n\t \"/" dir "\"", "\"://" key "/" loc "\""
+ 		}
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -81,6 +81,7 @@
+ - fix kernel mount status notification.
+ - fix set open file limit.
+ - improve descriptor open error reporting.
++- fix double quoting in auto.smb.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
