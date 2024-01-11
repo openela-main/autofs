@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 102%{?dist}.2
+Release: 109%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -300,6 +300,31 @@ Patch275: autofs-5.1.8-fix-unterminated-read-in-handle_cmd_pipe_fifo_message.pat
 
 Patch300: autofs-5.1.8-fix-memory-leak-in-sasl_do_kinit.patch
 Patch301: autofs-5.1.8-fix-fix-mount-tree-startup-reconnect.patch
+Patch302: autofs-5.1.8-fix-use_ignore_mount_option-description.patch
+Patch303: autofs-5.1.8-include-addtional-log-info-for-mounts.patch
+Patch304: autofs-5.1.8-fix-amd-selector-function-matching.patch
+Patch305: autofs-5.1.8-get-rid-entry-thid-field.patch
+Patch306: autofs-5.1.8-continue-expire-immediately-after-submount-check.patch
+Patch307: autofs-5.1.7-add-buffer-length-checks-to-autofs-mount_mount.patch
+Patch308: autofs-5.1.8-eliminate-realpath-from-mount-of-submount.patch
+Patch309: autofs-5.1.8-eliminate-root-param-from-autofs-mount-and-umount.patch
+Patch310: autofs-5.1.8-remove-redundant-stat-from-do_mount_direct.patch
+Patch311: autofs-5.1.8-get-rid-of-strlen-call-in-handle_packet_missing_direct.patch
+Patch312: autofs-5.1.8-remove-redundant-stat-call-in-lookup_ghost.patch
+Patch313: autofs-5.1.8-set-mapent-dev-and-ino-before-adding-to-index.patch
+Patch314: autofs-5.1.8-change-to-use-printf-functions-in-amd-parser.patch
+Patch315: autofs-5.1.8-dont-call-umount_subtree_mounts-on-parent-at-umount.patch
+Patch316: autofs-5.1.8-dont-take-parent-source-lock-at-mount-shutdown.patch
+Patch317: autofs-5.1.7-eliminate-buffer-usage-from-handle_mounts_cleanup.patch
+Patch318: autofs-5.1.8-fix-possible-use-after-free-in-handle_mounts_exit.patch
+Patch319: autofs-5.1.8-make-submount-cleanup-the-same-as-top-level-mounts.patch
+Patch320: autofs-5.1.7-eliminate-some-more-alloca-usage.patch
+Patch321: autofs-5.1.8-add-soucre-parameter-to-module-functions.patch
+Patch322: autofs-5.1.8-add-ioctlfd-open-helper.patch
+Patch323: autofs-5.1.8-make-open-files-limit-configurable.patch
+Patch324: autofs-5.1.8-fix-some-sss-error-return-cases.patch
+Patch325: autofs-5.1.8-fix-incorrect-matching-of-cached-wildcard-key.patch
+Patch326: autofs-5.1.8-fix-expire-retry-looping.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -641,6 +666,31 @@ echo %{version}-%{release} > .version
 
 %patch300 -p1
 %patch301 -p1
+%patch302 -p1
+%patch303 -p1
+%patch304 -p1
+%patch305 -p1
+%patch306 -p1
+%patch307 -p1
+%patch308 -p1
+%patch309 -p1
+%patch310 -p1
+%patch311 -p1
+%patch312 -p1
+%patch313 -p1
+%patch314 -p1
+%patch315 -p1
+%patch316 -p1
+%patch317 -p1
+%patch318 -p1
+%patch319 -p1
+%patch320 -p1
+%patch321 -p1
+%patch322 -p1
+%patch323 -p1
+%patch324 -p1
+%patch325 -p1
+%patch326 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -736,31 +786,70 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Tue Jun 06 2023 Ian Kent <ikent@redhat.com> - 5.1.4-102.el8_8.2
-- bz2212588 - autofs fails to start with combination of +auto.master and
-  local direct map lookups after upgrading to 5.1.4-93.el8 [rhel-8.8.0.z]
+* Fri Jul 14 2023 Ian Kent <ikent@redhat.com> - 5.1.4-109
+- bz2213267 - filesystems mount and expire immediately
+  - fix expire retry looping.
+- Resolves: rhbz#2213267
+
+* Wed Jul 12 2023 Ian Kent <ikent@redhat.com> - 5.1.4-108
+- bz2216877 - When looking up included maps, sometimes autofs does not
+  consult all the included files in order
+  - fix the "fix incorrect matching of cached wildcard key" patch.
+- Related: rhbz#2216877
+
+* Wed Jul 05 2023 Ian Kent <ikent@redhat.com> - 5.1.4-107
+- bz2216877 - When looking up included maps, sometimes autofs does not
+  consult all the included files in order
+  - fix incorrect matching of cached wildcard key
+- Resolves: rhbz#2216877
+
+* Fri Jun 16 2023 Ian Kent <ikent@redhat.com> - 5.1.4-106
+- bz2214444 - The sss lookup modules handles error return incorrectly
+  in some cases
+  - fix some sss error return cases.
+- Resolves: rhbz#2214444
+
+* Mon Jun 12 2023 Ian Kent <ikent@redhat.com> - 5.1.4-105
+- bz2207801 - amd map format netgoup selector function not working
+  - fix date for revision 104 changelog entry.
+  - fix use_ignore_mount_option description.
+  - include addtional log info for mounts.
+  - fix amd selector function matching.
+  - get rid entry thid field.
+  - continue expire immediately after submount check.
+  - add buffer length checks to autofs mount_mount().
+  - eliminate realpath from mount of submount.
+  - eliminate root param from autofs mount and umount.
+  - remove redundant fstat from do_mount_direct().
+  - get rid of strlen call in handle_packet_missing_direct().
+  - remove redundant stat call in lookup_ghost().
+  - set mapent dev and ino before adding to index.
+  - change to use printf functions in amd parser.
+  - dont call umount_subtree_mounts() on parent at umount.
+  - dont take parent source lock at mount shutdown.
+  - eliminate buffer usage from handle_mounts_cleanup().
+  - fix possible use after free in handle_mounts_exit().
+  - make submount cleanup the same as top level mounts.
+  - eliminate some more alloca usage.
+  - add soucre parameter to module functions.
+  - add ioctlfd open helper.
+  - make open files limit configurable.
+- Resolves: rhbz#2207801
+
+* Fri May 19 2023 Ian Kent <ikent@redhat.com> - 5.1.4-104
+- bz2208408 - autofs fails to start with combination of +auto.master and
+  local direct map lookups after upgrading to 5.1.4-93.el8
   - fix memory leak in sasl_do_kinit() (Coverity).
   - fix fix mount tree startup reconnect.
-- fix last release NVR in changelog.
-- Resolves: rhbz#2212588
+- Resolves: rhbz#2208408
 
-* Mon Mar 20 2023 Ian Kent <ikent@redhat.com> - 5.1.4-102.el8_8.1
-- bz2192275 - deadlock while reading amd maps [rhel-8.9.0] [rhel-8.8.0.z]
-  - changes already commited but not in a release, increment NVR.
-- Resolves: rhbz#2192275
+* Mon Mar 20 2023 Ian Kent <ikent@redhat.com> - 5.1.4-103
+- bz2177998 - deadlock while reading amd maps
+  - rebuild to avoid possible NVR problems.
+- Related: rhbz#2177998
 
 * Mon Mar 20 2023 Ian Kent <ikent@redhat.com> - 5.1.4-102
-- bz2175017 - deadlock while reading amd maps
-  - fix unterminated read in handle_cmd_pipe_fifo_message() (Coverity).
-- Related: rhbz#2175017
-
-* Sat Mar 11 2023 Ian Kent <ikent@redhat.com> - 5.1.4-101
-- bz2175017 - deadlock while reading amd maps
-  - patch cleanups, mostly patch descriptions/spelling.
-- Related: rhbz#2175017
-
-* Fri Mar 10 2023 Ian Kent <ikent@redhat.com> - 5.1.4-100
-- bz2175017 - deadlock while reading amd maps
+- bz2177998 - deadlock while reading amd maps
   - fix return status of mount_autofs().
   - don't close lookup at umount.
   - fix deadlock in lookups.
@@ -776,7 +865,8 @@ fi
   - switch to application wide command pipe.
   - get rid of unused field submnt_count.
   - fix mount tree startup reconnect.
-- Resolves: rhbz#2175017
+  - fix unterminated read in handle_cmd_pipe_fifo_message() (Coverity).
+- Resolves: rhbz#2177998
 
 * Wed Feb 08 2023 Ian Kent <ikent@redhat.com> - 5.1.4-93
 - bz2165143 - Autofs reports can't connect to sssd, retry for 10 seconds when
