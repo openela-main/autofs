@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 36%{?dist}
+Release: 55%{?dist}
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
@@ -138,6 +138,53 @@ Patch110: autofs-5.1.8-fix-deadlock-with-hosts-map-reload.patch
 Patch111: autofs-5.1.8-fix-memory-leak-in-update_hosts_mounts.patch
 Patch112: autofs-5.1.8-fix-minus-only-option-handling-in-concat_options.patch
 Patch113: autofs-5.1.8-fix-incorrect-path-for-is_mounted-in-try_remount.patch
+Patch114: autofs-5.1.8-fail-on-empty-replicated-host-name.patch
+Patch115: autofs-5.1.8-improve-handling-of-ENOENT-in-sss-setautomntent.patch
+Patch116: autofs-5.1.8-dont-immediately-call-function-when-waiting.patch
+
+Patch120: autofs-5.1.8-fix-return-status-of-mount_autofs.patch
+Patch121: autofs-5.1.8-dont-close-lookup-at-umount.patch
+Patch122: autofs-5.1.8-fix-deadlock-in-lookups.patch
+Patch123: autofs-5.1.8-dont-delay-expire.patch
+Patch124: autofs-5.1.8-make-amd-mapent-search-function-name-clear.patch
+Patch125: autofs-5.1.8-rename-statemachine-to-signal_handler.patch
+Patch126: autofs-5.1.8-make-signal-handling-consistent.patch
+Patch127: autofs-5.1.7-fix-incorrect-print-format-specifiers.patch
+Patch128: autofs-5.1.8-eliminate-last-remaining-state_pipe-usage.patch
+Patch129: autofs-5.1.8-add-function-master_find_mapent_by_devid.patch
+Patch130: autofs-5.1.8-use-device-id-to-locate-autofs_point-when-setting-log-priotity.patch
+Patch131: autofs-5.1.8-add-command-pipe-handling-functions.patch
+Patch132: autofs-5.1.8-switch-to-application-wide-command-pipe.patch
+Patch133: autofs-5.1.8-get-rid-of-unused-field-submnt_count.patch
+Patch134: autofs-5.1.8-fix-mount-tree-startup-reconnect.patch
+Patch135: autofs-5.1.8-fix-unterminated-read-in-handle_cmd_pipe_fifo_message.patch
+
+Patch150: autofs-5.1.8-fix-memory-leak-in-sasl_do_kinit.patch
+Patch151: autofs-5.1.8-fix-fix-mount-tree-startup-reconnect.patch
+Patch152: autofs-5.1.8-fix-use_ignore_mount_option-description.patch
+Patch153: autofs-5.1.8-include-addtional-log-info-for-mounts.patch
+Patch154: autofs-5.1.8-fix-amd-selector-function-matching.patch
+Patch155: autofs-5.1.8-get-rid-entry-thid-field.patch
+Patch156: autofs-5.1.8-continue-expire-immediately-after-submount-check.patch
+Patch157: autofs-5.1.7-add-buffer-length-checks-to-autofs-mount_mount.patch
+Patch158: autofs-5.1.8-eliminate-realpath-from-mount-of-submount.patch
+Patch159: autofs-5.1.8-eliminate-root-param-from-autofs-mount-and-umount.patch
+Patch160: autofs-5.1.8-remove-redundant-stat-from-do_mount_direct.patch
+Patch161: autofs-5.1.8-get-rid-of-strlen-call-in-handle_packet_missing_direct.patch
+Patch162: autofs-5.1.8-remove-redundant-stat-call-in-lookup_ghost.patch
+Patch163: autofs-5.1.8-set-mapent-dev-and-ino-before-adding-to-index.patch
+Patch164: autofs-5.1.8-change-to-use-printf-functions-in-amd-parser.patch
+Patch165: autofs-5.1.8-dont-call-umount_subtree_mounts-on-parent-at-umount.patch
+Patch166: autofs-5.1.8-dont-take-parent-source-lock-at-mount-shutdown.patch
+Patch167: autofs-5.1.7-eliminate-buffer-usage-from-handle_mounts_cleanup.patch
+Patch168: autofs-5.1.8-fix-possible-use-after-free-in-handle_mounts_exit.patch
+Patch169: autofs-5.1.8-make-submount-cleanup-the-same-as-top-level-mounts.patch
+Patch170: autofs-5.1.8-add-soucre-parameter-to-module-functions.patch
+Patch171: autofs-5.1.8-add-ioctlfd-open-helper.patch
+Patch172: autofs-5.1.8-make-open-files-limit-configurable.patch
+Patch173: autofs-5.1.8-fix-some-sss-error-return-cases.patch
+Patch174: autofs-5.1.8-fix-incorrect-matching-of-cached-wildcard-key.patch
+Patch175: autofs-5.1.8-fix-expire-retry-looping.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -320,6 +367,53 @@ echo %{version}-%{release} > .version
 %patch111 -p1
 %patch112 -p1
 %patch113 -p1
+%patch114 -p1
+%patch115 -p1
+%patch116 -p1
+
+%patch120 -p1
+%patch121 -p1
+%patch122 -p1
+%patch123 -p1
+%patch124 -p1
+%patch125 -p1
+%patch126 -p1
+%patch127 -p1
+%patch128 -p1
+%patch129 -p1
+%patch130 -p1
+%patch131 -p1
+%patch132 -p1
+%patch133 -p1
+%patch134 -p1
+%patch135 -p1
+
+%patch150 -p1
+%patch151 -p1
+%patch152 -p1
+%patch153 -p1
+%patch154 -p1
+%patch155 -p1
+%patch156 -p1
+%patch157 -p1
+%patch158 -p1
+%patch159 -p1
+%patch160 -p1
+%patch161 -p1
+%patch162 -p1
+%patch163 -p1
+%patch164 -p1
+%patch165 -p1
+%patch166 -p1
+%patch167 -p1
+%patch168 -p1
+%patch169 -p1
+%patch170 -p1
+%patch171 -p1
+%patch172 -p1
+%patch173 -p1
+%patch174 -p1
+%patch175 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -428,6 +522,89 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Wed Aug 02 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-55
+- bz2223252 - filesystems mount and expire immediately
+  - fix expire retry looping.
+  - correct day in changelog entry for revision 53.
+- Resolves: rhbz#2223252
+
+* Mon Jul 17 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-54
+- bz2223236 - When looking up included maps, sometimes autofs does not
+  consult all the included files in order
+  - fix incorrect matching of cached wildcard key.
+- Resolves: rhbz#2223236
+
+* Thu Jul 13 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-53
+- bz2215661 - The sss lookup modules handles error return incorrectly in
+  some cases
+  - fix some sss error return cases.
+- Resolves: rhbz#2215661
+
+* Tue Jun 13 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-52
+- bz2210899 - amd map format netgoup selector function not working
+  - fix use_ignore_mount_option description.
+  - include addtional log info for mounts.
+  - fix amd selector function matching.
+  - get rid entry thid field.
+  - continue expire immediately after submount check.
+  - add buffer length checks to autofs mount_mount().
+  - eliminate realpath from mount of submount.
+  - eliminate root param from autofs mount and umount.
+  - remove redundant fstat from do_mount_direct().
+  - get rid of strlen call in handle_packet_missing_direct().
+  - remove redundant stat call in lookup_ghost().
+  - set mapent dev and ino before adding to index.
+  - change to use printf functions in amd parser.
+  - dont call umount_subtree_mounts() on parent at umount.
+  - dont take parent source lock at mount shutdown.
+  - eliminate buffer usage from handle_mounts_cleanup().
+  - fix possible use after free in handle_mounts_exit().
+  - make submount cleanup the same as top level mounts.
+  - add soucre parameter to module functions.
+  - add ioctlfd open helper.
+  - make open files limit configurable.
+- Resolves: rhbz#2210899
+
+* Fri Jun 02 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-51
+- bz2210161 - autofs fails to start with combination of +auto.master and
+  local direct map lookups after upgrading to 5.1.4-93.el8
+  - fix memory leak in sasl_do_kinit() (Coverity).
+  - fix fix mount tree startup reconnect.
+- Resolves: rhbz#2210161
+
+* Tue Mar 28 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-50
+- bz2179753 - deadlock while reading amd maps
+  - fix return status of mount_autofs().
+  - don't close lookup at umount.
+  - fix deadlock in lookups.
+  - dont delay expire.
+  - make amd mapent search function name clear.
+  - rename statemachine() to signal_handler().
+  - make signal handling consistent.
+  - fix incorrect print format specifiers in get_pkt().
+  - eliminate last remaining state_pipe usage.
+  - add function master_find_mapent_by_devid().
+  - use device id to locate autofs_point when setting log priotity.
+  - add command pipe handling functions.
+  - switch to application wide command pipe.
+  - get rid of unused field submnt_count.
+  - fix mount tree startup reconnect.
+  - fix unterminated read in handle_cmd_pipe_fifo_message() (Coverity).
+- Resolves: rhbz#2179753
+
+* Mon Mar 27 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-38
+- bz2170287 - Autofs reports can't connect to sssd, retry for 10
+  seconds when real problem is empty LDAP object
+  - improve handling of ENOENT in sss setautomntent().
+  - dont immediately call function when waiting.
+- Resolves: rhbz#2170287
+
+* Mon Mar 27 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-37
+- bz2170285 - Users can trigger a simple autofs DoS with wildcard
+  automounter maps
+  - fail on empty trailing replicated host name.
+- Resolves: rhbz#2170285
+
 * Tue Dec 06 2022 Ian Kent <ikent@redhat.com> - 1:5.1.7-36
 - bz2149013 - autofs: errors in autofs-5.1.4-83.el8.x86_64 when restarting
   autofs with busy directories
