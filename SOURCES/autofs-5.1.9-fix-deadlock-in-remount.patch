@@ -1,0 +1,68 @@
+autofs-5.1.9 - fix deadlock in remount
+
+From: Ian Kent <raven@themaw.net>
+
+If we're starting up or trying to re-connect to an existing direct mount
+we could be iterating through the map entries with the cache readlock
+held so we can't just take the writelock for direct mounts. But when
+trying to re-connect to an existing mount at startup there won't be any
+other process updating the map entry cache.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_sun.c |   26 ++++++++++++++++++++++++--
+ 2 files changed, 25 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -151,6 +151,7 @@
+ - fix incorrect matching of cached wildcard key.
+ - fix expire retry looping.
+ - fix get parent multi-mount check in try_remount().
++- fix deadlock in remount.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/parse_sun.c
++++ autofs-5.1.4/modules/parse_sun.c
+@@ -881,7 +881,18 @@ update_offset_entry(struct autofs_point
+ 			strcpy(m_mapent, loc);
+ 	}
+ 
+-	cache_writelock(mc);
++	/*
++	 * If we're starting up or trying to re-connect to an existing
++	 * direct mount we could be iterating through the map entries
++	 * with the readlock held so we can't just take the writelock
++	 * for direct mounts. But at when trying to re-connect to an
++	 * existing mount at startup there won't be any other process
++	 * updating the map entry cache.
++	 */
++	if (ap->state == ST_INIT && ap->flags & MOUNT_FLAG_REMOUNT)
++		cache_readlock(mc);
++	else
++		cache_writelock(mc);
+ 	ret = cache_update_offset(mc, name, m_key, m_mapent, age);
+ 
+ 	me = cache_lookup_distinct(mc, m_key);
+@@ -1573,7 +1584,18 @@ dont_expand:
+ 			free(myoptions);
+ 		} while (*p == '/' || (*p == '"' && *(p + 1) == '/'));
+ 
+-		cache_writelock(mc);
++		/*
++		 * If we're starting up or trying to re-connect to an existing
++		 * direct mount we could be iterating through the map entries
++		 * with the readlock held so we can't just take the writelock
++		 * for direct mounts. But at when trying to re-connect to an
++		 * existing mount at startup there won't be any other process
++		 * updating the map entry cache.
++		 */
++		if (ap->state == ST_INIT && ap->flags & MOUNT_FLAG_REMOUNT)
++			cache_readlock(mc);
++		else
++			cache_writelock(mc);
+ 		me = cache_lookup_distinct(mc, name);
+ 		if (!me) {
+ 			cache_unlock(mc);

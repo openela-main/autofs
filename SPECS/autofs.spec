@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 109%{?dist}
+Release: 109%{?dist}.1
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -325,6 +325,9 @@ Patch323: autofs-5.1.8-make-open-files-limit-configurable.patch
 Patch324: autofs-5.1.8-fix-some-sss-error-return-cases.patch
 Patch325: autofs-5.1.8-fix-incorrect-matching-of-cached-wildcard-key.patch
 Patch326: autofs-5.1.8-fix-expire-retry-looping.patch
+
+Patch327: autofs-5.1.9-fix-get-parent-multi-mount-check-in-try_remount.patch
+Patch328: autofs-5.1.9-fix-deadlock-in-remount.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -692,6 +695,9 @@ echo %{version}-%{release} > .version
 %patch325 -p1
 %patch326 -p1
 
+%patch327 -p1
+%patch328 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -786,6 +792,13 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Thu Jan 11 2024 Ian Kent <ikent@redhat.com> - 5.1.4-109.el8_9.1
+- RHEL-21288 - SIGSEGV using hierarchical map entries on reload with
+  autofs-5.1.4-109
+  - fix get parent multi-mount check in try_remount().
+  - fix deadlock in remount.
+- Resolves: RHEL-21288
+
 * Fri Jul 14 2023 Ian Kent <ikent@redhat.com> - 5.1.4-109
 - bz2213267 - filesystems mount and expire immediately
   - fix expire retry looping.
