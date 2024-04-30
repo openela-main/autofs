@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 55%{?dist}
+Release: 58%{?dist}
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
@@ -185,6 +185,12 @@ Patch172: autofs-5.1.8-make-open-files-limit-configurable.patch
 Patch173: autofs-5.1.8-fix-some-sss-error-return-cases.patch
 Patch174: autofs-5.1.8-fix-incorrect-matching-of-cached-wildcard-key.patch
 Patch175: autofs-5.1.8-fix-expire-retry-looping.patch
+
+Patch176: autofs-5.1.8-allow-null-map-in-indirect-maps.patch
+Patch177: autofs-5.1.8-fix-multi-mount-check.patch
+
+Patch178: autofs-5.1.9-fix-get-parent-multi-mount-check-in-try_remount.patch
+Patch179: autofs-5.1.9-fix-deadlock-in-remount.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -415,6 +421,12 @@ echo %{version}-%{release} > .version
 %patch174 -p1
 %patch175 -p1
 
+%patch176 -p1
+%patch177 -p1
+
+%patch178 -p1
+%patch179 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure \
@@ -522,6 +534,24 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Fri Dec 22 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-58
+- RHEL-19731 - SIGSEGV using hierarchical map entries on reload with
+  autofs-5.1.4-109
+  - fix get parent multi-mount check in try_remount().
+  - fix deadlock in remount.
+- Resolves: RHEL-19731
+
+* Mon Oct 30 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-57
+- RHEL-13084 - multi mount detection fails for share with blank+dash causing
+  SEGV crash
+  - fix multi-mount check.
+- Resolves: RHEL-13084
+
+* Thu Oct 26 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-56
+- RHEL-13083 - autofs attempts to mount nonexistant ".hidden" filesystems
+  - allow -null map in indirect maps.
+- Resolves: RHEL-13083
+
 * Wed Aug 02 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-55
 - bz2223252 - filesystems mount and expire immediately
   - fix expire retry looping.
