@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 109%{?dist}.1
+Release: 113%{?dist}
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -326,8 +326,11 @@ Patch324: autofs-5.1.8-fix-some-sss-error-return-cases.patch
 Patch325: autofs-5.1.8-fix-incorrect-matching-of-cached-wildcard-key.patch
 Patch326: autofs-5.1.8-fix-expire-retry-looping.patch
 
-Patch327: autofs-5.1.9-fix-get-parent-multi-mount-check-in-try_remount.patch
-Patch328: autofs-5.1.9-fix-deadlock-in-remount.patch
+Patch327: autofs-5.1.8-allow-null-map-in-indirect-maps.patch
+Patch328: autofs-5.1.8-fix-multi-mount-check.patch
+
+Patch329: autofs-5.1.9-fix-get-parent-multi-mount-check-in-try_remount.patch
+Patch330: autofs-5.1.9-fix-deadlock-in-remount.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -698,6 +701,9 @@ echo %{version}-%{release} > .version
 %patch327 -p1
 %patch328 -p1
 
+%patch329 -p1
+%patch330 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -792,12 +798,28 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Thu Jan 11 2024 Ian Kent <ikent@redhat.com> - 5.1.4-109.el8_9.1
-- RHEL-21288 - SIGSEGV using hierarchical map entries on reload with
+* Mon Dec 18 2023 Ian Kent <ikent@redhat.com> - 5.1.4-113
+- RHEL-18035 - SIGSEGV using hierarchical map entries on reload with
   autofs-5.1.4-109
   - fix get parent multi-mount check in try_remount().
   - fix deadlock in remount.
-- Resolves: RHEL-21288
+- Resolves: RHEL-18035
+
+* Mon Sep 18 2023 Ian Kent <ikent@redhat.com> - 5.1.4-112
+- RHEL-7997 - multi mount detection fails for share with blank+dash
+  causing SEGV crash
+  -fix multi-mount check.
+-Resolves: RHEL-7997
+
+* Mon Sep 18 2023 Ian Kent <ikent@redhat.com> - 5.1.4-111
+- RHEL-12369 - autofs attempts to mount nonexistant ".hidden" filesystems
+  - update patch "allow -null map in indirect maps".
+- Resolves: RHEL-12369
+
+* Mon Sep 18 2023 Ian Kent <ikent@redhat.com> - 5.1.4-110
+- bz2232402 - autofs attempts to mount nonexistant ".hidden" filesystems
+  - allow -null map in indirect maps.
+- Resolves: rhbz#2232402
 
 * Fri Jul 14 2023 Ian Kent <ikent@redhat.com> - 5.1.4-109
 - bz2213267 - filesystems mount and expire immediately

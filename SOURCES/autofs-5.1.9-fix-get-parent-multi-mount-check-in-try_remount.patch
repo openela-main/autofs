@@ -22,10 +22,10 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.1.4.orig/CHANGELOG
 +++ autofs-5.1.4/CHANGELOG
-@@ -150,6 +150,7 @@
- - fix some sss error return cases.
- - fix incorrect matching of cached wildcard key.
+@@ -152,6 +152,7 @@
  - fix expire retry looping.
+ - allow -null map in indirect maps.
+ - fix multi-mount check.
 +- fix get parent multi-mount check in try_remount().
  
  xx/xx/2018 autofs-5.1.5

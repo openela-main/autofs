@@ -16,9 +16,9 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.1.4.orig/CHANGELOG
 +++ autofs-5.1.4/CHANGELOG
-@@ -151,6 +151,7 @@
- - fix incorrect matching of cached wildcard key.
- - fix expire retry looping.
+@@ -153,6 +153,7 @@
+ - allow -null map in indirect maps.
+ - fix multi-mount check.
  - fix get parent multi-mount check in try_remount().
 +- fix deadlock in remount.
  
@@ -26,7 +26,7 @@ Signed-off-by: Ian Kent <raven@themaw.net>
  - fix flag file permission.
 --- autofs-5.1.4.orig/modules/parse_sun.c
 +++ autofs-5.1.4/modules/parse_sun.c
-@@ -881,7 +881,18 @@ update_offset_entry(struct autofs_point
+@@ -888,7 +888,18 @@ update_offset_entry(struct autofs_point
  			strcpy(m_mapent, loc);
  	}
  
@@ -46,7 +46,7 @@ Signed-off-by: Ian Kent <raven@themaw.net>
  	ret = cache_update_offset(mc, name, m_key, m_mapent, age);
  
  	me = cache_lookup_distinct(mc, m_key);
-@@ -1573,7 +1584,18 @@ dont_expand:
+@@ -1580,7 +1591,18 @@ dont_expand:
  			free(myoptions);
  		} while (*p == '/' || (*p == '"' && *(p + 1) == '/'));
  
