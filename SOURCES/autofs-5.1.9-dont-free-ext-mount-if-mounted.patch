@@ -1,0 +1,53 @@
+autofs-5.1.9 - don't free ext mount if mounted
+
+From: Ian Kent <raven@themaw.net>
+
+If an external mount is in use when a umount is attempted don't free
+it just let the reference count go to zero.
+
+This will leave the mount in place and it won't get umounted. But if
+another automount uses it it's reference count will become no zero
+allowing for it to be umounted as normal if it isn't in use during
+automount expire.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -157,6 +157,7 @@
+ - fix submount shutdown race.
+ - fix amd external mount error handling.
+ - fix amd external mount mount handling.
++- don't free ext mount if mounted.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -906,10 +906,10 @@ int ext_mount_remove(const char *path)
+ 	if (!em)
+ 		goto done;
+ 
+-	em->ref--;
+ 	if (em->ref)
+-		goto done;
+-	else {
++		em->ref--;
++
++	if (!em->ref && !is_mounted(path, MNTS_REAL)) {
+ 		hlist_del_init(&em->mount);
+ 		free(em->mp);
+ 		if (em->umount)
+@@ -931,7 +931,7 @@ int ext_mount_inuse(const char *path)
+ 	em = ext_mount_lookup(path);
+ 	if (!em)
+ 		goto done;
+-	ret = em->ref;
++	ret = 1;
+ done:
+ 	ext_mount_hash_mutex_unlock();
+ 	return ret;

@@ -1,0 +1,242 @@
+autofs-5.1.9 - refactor amd function umount_amd_ext_mount()
+
+From: Ian Kent <raven@themaw.net>
+
+The amd mounts function umount_amd_ext_mount() needs some improvement.
+
+Make sure the function returns true for success and false for failure
+and add a parameter to control if the expternal mount reference should
+be decremented on successful umount.
+
+If the reference count of the external mount is greater than 1 there's
+some other mount using (symlink pointing to) it so don't try to umount
+it just return success.
+
+Also check for the case where the mount is already mounted.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 
+ daemon/automount.c  |    4 +-
+ include/mounts.h    |    2 -
+ lib/mounts.c        |   80 ++++++++++++++++++++++++++++++----------------------
+ modules/parse_amd.c |   10 +++---
+ 5 files changed, 56 insertions(+), 41 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -159,6 +159,7 @@
+ - fix amd external mount mount handling.
+ - don't free ext mount if mounted.
+ - refactor amd function do_program_mount().
++- refactor umount_amd_ext_mount().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -619,7 +619,7 @@ static int umount_subtree_mounts(struct
+ 		/* Check for an external mount and umount if possible */
+ 		mnt = mnts_find_amdmount(path);
+ 		if (mnt) {
+-			umount_amd_ext_mount(ap, mnt->ext_mp);
++			umount_amd_ext_mount(ap, mnt->ext_mp, 1);
+ 			mnts_remove_amdmount(path);
+ 			mnts_put_mount(mnt);
+ 		}
+@@ -684,7 +684,7 @@ int umount_multi(struct autofs_point *ap
+ 		/* Check for an external mount and attempt umount if needed */
+ 		mnt = mnts_find_amdmount(path);
+ 		if (mnt) {
+-			umount_amd_ext_mount(ap, mnt->ext_mp);
++			umount_amd_ext_mount(ap, mnt->ext_mp, 1);
+ 			mnts_remove_amdmount(path);
+ 			mnts_put_mount(mnt);
+ 		}
+--- autofs-5.1.4.orig/include/mounts.h
++++ autofs-5.1.4/include/mounts.h
+@@ -199,7 +199,7 @@ int try_remount(struct autofs_point *, s
+ void set_indirect_mount_tree_catatonic(struct autofs_point *);
+ void set_direct_mount_tree_catatonic(struct autofs_point *, struct mapent *);
+ int umount_ent(struct autofs_point *, const char *);
+-int umount_amd_ext_mount(struct autofs_point *, const char *);
++int umount_amd_ext_mount(struct autofs_point *, const char *, int remove);
+ int clean_stale_multi_triggers(struct autofs_point *, struct mapent *, char *, const char *);
+ 
+ #endif
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -3097,37 +3097,62 @@ int umount_ent(struct autofs_point *ap,
+ 	return mounted;
+ }
+ 
+-int umount_amd_ext_mount(struct autofs_point *ap, const char *path)
++int umount_amd_ext_mount(struct autofs_point *ap, const char *path, int remove)
+ {
+ 	struct ext_mount *em;
+ 	char *umount = NULL;
+-	char *mp;
++	char *mp = NULL;
+ 	int rv = 1;
++	int ret;
+ 
+ 	pthread_mutex_lock(&ext_mount_hash_mutex);
+-
+ 	em = ext_mount_lookup(path);
+ 	if (!em) {
+ 		pthread_mutex_unlock(&ext_mount_hash_mutex);
++		rv = 0;
+ 		goto out;
+ 	}
+ 	mp = strdup(em->mp);
+ 	if (!mp) {
+ 		pthread_mutex_unlock(&ext_mount_hash_mutex);
++		rv = 0;
+ 		goto out;
+ 	}
+ 	if (em->umount) {
+ 		umount = strdup(em->umount);
+ 		if (!umount) {
+ 			pthread_mutex_unlock(&ext_mount_hash_mutex);
+-			free(mp);
++			rv = 0;
+ 			goto out;
+ 		}
+ 	}
+-
++	/* Don't try and umount if there's more than one
++	 * user of the external mount.
++	 */
++	if (em->ref > 1) {
++		pthread_mutex_unlock(&ext_mount_hash_mutex);
++		if (!remove)
++			error(ap->logopt,
++			    "reference count mismatch, called with remove false");
++		else
++			ext_mount_remove(mp);
++		goto out;
++	}
++	/* This shouldn't happen ... */
++	if (!is_mounted(mp, MNTS_REAL)) {
++		pthread_mutex_unlock(&ext_mount_hash_mutex);
++		error(ap->logopt, "failed to umount program mount at %s", mp);
++		if (remove)
++			ext_mount_remove(mp);
++		goto out;
++	}
+ 	pthread_mutex_unlock(&ext_mount_hash_mutex);
+ 
+-	if (umount) {
++	if (!umount) {
++		ret = umount_ent(ap, mp);
++		if (ret)
++			rv = 0;
++	} else {
+ 		char *prog;
+ 		char **argv;
+ 		int argc = -1;
+@@ -3136,41 +3161,30 @@ int umount_amd_ext_mount(struct autofs_p
+ 		argv = NULL;
+ 
+ 		argc = construct_argv(umount, &prog, &argv);
+-		if (argc == -1)
+-			goto done;
+-
+-		if (!ext_mount_remove(mp)) {
+-			rv =0;
+-			goto out_free;
+-		}
+-
+-		rv = spawnv(ap->logopt, prog, (const char * const *) argv);
+-		if (rv == -1 || (WIFEXITED(rv) && WEXITSTATUS(rv)))
++		if (argc == -1) {
+ 			error(ap->logopt,
+-			     "failed to umount program mount at %s", mp);
+-		else {
++			      "failed to allocate args for umount of %s", mp);
+ 			rv = 0;
+-			debug(ap->logopt, "umounted program mount at %s", mp);
+-			rmdir_path(ap, mp, ap->dev);
++			goto out;
+ 		}
+-out_free:
++		ret = spawnv(ap->logopt, prog, (const char * const *) argv);
++		rv = WIFEXITED(ret) && !WEXITSTATUS(ret);
+ 		free_argv(argc, (const char **) argv);
+-
+-		goto done;
+ 	}
+ 
+-	if (ext_mount_remove(mp)) {
+-		rv = umount_ent(ap, mp);
+-		if (rv)
+-			error(ap->logopt,
+-			      "failed to umount external mount %s", mp);
+-		else
+-			debug(ap->logopt, "umounted external mount %s", mp);
++	if (is_mounted(mp, MNTS_REAL))
++		error(ap->logopt,
++		      "failed to umount external mount %s", mp);
++	else {
++		info(ap->logopt, "umounted external mount %s", mp);
++		rmdir_path(ap, mp, ap->dev);
+ 	}
+-done:
++	if (remove)
++		ext_mount_remove(mp);
++out:
+ 	if (umount)
+ 		free(umount);
+-	free(mp);
+-out:
++	if (mp)
++		free(mp);
+ 	return rv;
+ }
+--- autofs-5.1.4.orig/modules/parse_amd.c
++++ autofs-5.1.4/modules/parse_amd.c
+@@ -1133,7 +1133,7 @@ symlink:
+ 
+ 	if (entry->sublink) {
+ 		/* failed to complete sublink mount */
+-		umount_amd_ext_mount(ap, entry->fs);
++		umount_amd_ext_mount(ap, entry->fs, 1);
+ 	}
+ out:
+ 	return ret;
+@@ -1184,7 +1184,7 @@ static int do_generic_mount(struct autof
+ 		/* If we have an external mount add it to the list */
+ 		if (!ext_mount_add(entry->fs, entry->umount)) {
+ 			if (umount)
+-				umount_amd_ext_mount(ap, entry->fs);
++				umount_amd_ext_mount(ap, entry->fs, 0);
+ 			error(ap->logopt, MODPREFIX
+ 			      "error: could not add external mount %s",
+ 			      entry->fs);
+@@ -1235,7 +1235,7 @@ static int do_nfs_mount(struct autofs_po
+ 		/* We might be using an external mount */
+ 		if (!ext_mount_add(entry->fs, entry->umount)) {
+ 			if (umount)
+-				umount_amd_ext_mount(ap, entry->fs);
++				umount_amd_ext_mount(ap, entry->fs, 0);
+ 			error(ap->logopt, MODPREFIX
+ 			      "error: could not add external mount %s", entry->fs);
+ 			ret = 1;
+@@ -1470,7 +1470,7 @@ static int do_program_mount(struct autof
+ 				free(str);
+ 				goto done;
+ 			}
+-			umount_amd_ext_mount(ap, entry->fs);
++			umount_amd_ext_mount(ap, entry->fs, 0);
+ 		}
+ 		error(ap->logopt, MODPREFIX
+ 		   "%s: failed to mount using %s", entry->type, entry->mount);
+@@ -1481,7 +1481,7 @@ static int do_program_mount(struct autof
+ done:
+ 	rv = do_link_mount(ap, name, entry, 0);
+ 	if (rv) {
+-		if (umount_amd_ext_mount(ap, entry->fs)) {
++		if (!umount_amd_ext_mount(ap, entry->fs, 1)) {
+ 			debug(ap->logopt, MODPREFIX
+ 			      "%s: failed to cleanup external mount at %s",
+ 			      entry->type, entry->fs);

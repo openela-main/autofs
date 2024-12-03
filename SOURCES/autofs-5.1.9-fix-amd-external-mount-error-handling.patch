@@ -1,0 +1,55 @@
+autofs-5.1.9 - fix amd external mount error handling
+
+From: Ian Kent <raven@themaw.net>
+
+An amd program mount might have defined its own umount program to be used
+for external mounts.
+
+In mount failure cases where the mount needs to be umounted be sure to
+use the custom umount if there is one.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -155,6 +155,7 @@
+ - fix get parent multi-mount check in try_remount().
+ - fix deadlock in remount.
+ - fix submount shutdown race.
++- fix amd external mount error handling.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/parse_amd.c
++++ autofs-5.1.4/modules/parse_amd.c
+@@ -1183,7 +1183,7 @@ static int do_generic_mount(struct autof
+ 		}
+ 		/* If we have an external mount add it to the list */
+ 		if (umount && !ext_mount_add(entry->fs, entry->umount)) {
+-			umount_ent(ap, entry->fs);
++			umount_amd_ext_mount(ap, entry->fs);
+ 			error(ap->logopt, MODPREFIX
+ 			      "error: could not add external mount %s",
+ 			      entry->fs);
+@@ -1233,7 +1233,7 @@ static int do_nfs_mount(struct autofs_po
+ 		}
+ 		/* We might be using an external mount */
+ 		if (umount && !ext_mount_add(entry->fs, entry->umount)) {
+-			umount_ent(ap, entry->fs);
++			umount_amd_ext_mount(ap, entry->fs);
+ 			error(ap->logopt, MODPREFIX
+ 			      "error: could not add external mount %s", entry->fs);
+ 			ret = 1;
+@@ -1462,7 +1462,7 @@ static int do_program_mount(struct autof
+ 				     "%s: mounted %s", entry->type, entry->fs);
+ 				goto do_free;
+ 			}
+-			umount_ent(ap, entry->fs);
++			umount_amd_ext_mount(ap, entry->fs);
+ 		}
+ 
+ 		if (!ext_mount_inuse(entry->fs))

@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 113%{?dist}
+Release: 114%{?dist}.1
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -331,6 +331,15 @@ Patch328: autofs-5.1.8-fix-multi-mount-check.patch
 
 Patch329: autofs-5.1.9-fix-get-parent-multi-mount-check-in-try_remount.patch
 Patch330: autofs-5.1.9-fix-deadlock-in-remount.patch
+
+Patch331: autofs-5.1.9-fix-submount-shutdown-race.patch
+
+Patch332: autofs-5.1.9-fix-amd-external-mount-error-handling.patch
+Patch333: autofs-5.1.9-fix-amd-external-mount-mount-handling.patch
+Patch334: autofs-5.1.9-dont-free-ext-mount-if-mounted.patch
+Patch335: autofs-5.1.9-refactor-amd-function-do_program_mount.patch
+Patch336: autofs-5.1.9-refactor-amd-function-umount_amd_ext_mount.patch
+Patch337: autofs-5.1.9-add-flags-argument-to-amd-do_program_mount.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -704,6 +713,15 @@ echo %{version}-%{release} > .version
 %patch329 -p1
 %patch330 -p1
 
+%patch331 -p1
+
+%patch332 -p1
+%patch333 -p1
+%patch334 -p1
+%patch335 -p1
+%patch336 -p1
+%patch337 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -798,6 +816,19 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Fri Nov 08 2024 Ian Kent <ikent@redhat.com> - 5.1.4-114
+- RHEL-61670 - sporadic autofs daemon segfaults
+  - fix submount shutdown race.
+- RHEL-52402 - Sporadic mount failures with amd program maps on RHEL8
+  - fix amd external mount error handling.
+  - fix amd external mount mount handling.
+  - don't free ext mount if mounted.
+  - refactor amd function do_program_mount().
+  - refactor umount_amd_ext_mount().
+  - add flags argument to amd do_program_mount().
+- Resolves: RHEL-61670 RHEL-52402
+
+
 * Mon Dec 18 2023 Ian Kent <ikent@redhat.com> - 5.1.4-113
 - RHEL-18035 - SIGSEGV using hierarchical map entries on reload with
   autofs-5.1.4-109
