@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 114%{?dist}.1
+Release: 114%{?dist}.2
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -340,6 +340,8 @@ Patch334: autofs-5.1.9-dont-free-ext-mount-if-mounted.patch
 Patch335: autofs-5.1.9-refactor-amd-function-do_program_mount.patch
 Patch336: autofs-5.1.9-refactor-amd-function-umount_amd_ext_mount.patch
 Patch337: autofs-5.1.9-add-flags-argument-to-amd-do_program_mount.patch
+
+Patch338: autofs-5.1.9-fix-deadlock-in-master_notify_submount.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -722,6 +724,8 @@ echo %{version}-%{release} > .version
 %patch336 -p1
 %patch337 -p1
 
+%patch338 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -816,6 +820,11 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Wed Jan 15 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.2
+- RHEL-72524 - autofs: deadlock between mnts_lookup_mount and mnts_remove_mount
+  - fix deadlock in master_notify_submount().
+-Resolves: RHEL-72524
+
 * Fri Nov 08 2024 Ian Kent <ikent@redhat.com> - 5.1.4-114
 - RHEL-61670 - sporadic autofs daemon segfaults
   - fix submount shutdown race.
@@ -827,7 +836,6 @@ fi
   - refactor umount_amd_ext_mount().
   - add flags argument to amd do_program_mount().
 - Resolves: RHEL-61670 RHEL-52402
-
 
 * Mon Dec 18 2023 Ian Kent <ikent@redhat.com> - 5.1.4-113
 - RHEL-18035 - SIGSEGV using hierarchical map entries on reload with
