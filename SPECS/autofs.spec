@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 114%{?dist}.2
+Release: 114%{?dist}.3
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -343,6 +343,8 @@ Patch337: autofs-5.1.9-add-flags-argument-to-amd-do_program_mount.patch
 
 Patch338: autofs-5.1.9-fix-deadlock-in-master_notify_submount.patch
 
+Patch339: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
+
 %if %{with_systemd}
 BuildRequires: systemd-units
 BuildRequires: systemd-devel
@@ -402,329 +404,331 @@ echo %{version}-%{release} > .version
   %define unitdir %{?_unitdir:/usr/lib/systemd/system}
   %define systemd_configure_arg --with-systemd
 %endif
-%patch1 -p1
-%patch2 -p1
-%patch3 -p1
-%patch4 -p1
-%patch5 -p1
-%patch6 -p1
-%patch7 -p1
-%patch8 -p1
-%patch9 -p1
-%patch10 -p1
-%patch11 -p1
-%patch12 -p1
-%patch13 -p1
-%patch14 -p1
-%patch15 -p1
-%patch16 -p1
-%patch17 -p1
-%patch18 -p1
-%patch19 -p1
-%patch20 -p1
-%patch21 -p1
-%patch22 -p1
-%patch23 -p1
-%patch24 -p1
-%patch25 -p1
-%patch26 -p1
-%patch27 -p1
-%patch28 -p1
-%patch29 -p1
-%patch30 -p1
-%patch31 -p1
-%patch32 -p1
-%patch33 -p1
-%patch34 -p1
-%patch35 -p1
-%patch36 -p1
-%patch37 -p1
-%patch38 -p1
-%patch39 -p1
+%patch -P 1 -p1
+%patch -P 2 -p1
+%patch -P 3 -p1
+%patch -P 4 -p1
+%patch -P 5 -p1
+%patch -P 6 -p1
+%patch -P 7 -p1
+%patch -P 8 -p1
+%patch -P 9 -p1
+%patch -P 10 -p1
+%patch -P 11 -p1
+%patch -P 12 -p1
+%patch -P 13 -p1
+%patch -P 14 -p1
+%patch -P 15 -p1
+%patch -P 16 -p1
+%patch -P 17 -p1
+%patch -P 18 -p1
+%patch -P 19 -p1
+%patch -P 20 -p1
+%patch -P 21 -p1
+%patch -P 22 -p1
+%patch -P 23 -p1
+%patch -P 24 -p1
+%patch -P 25 -p1
+%patch -P 26 -p1
+%patch -P 27 -p1
+%patch -P 28 -p1
+%patch -P 29 -p1
+%patch -P 30 -p1
+%patch -P 31 -p1
+%patch -P 32 -p1
+%patch -P 33 -p1
+%patch -P 34 -p1
+%patch -P 35 -p1
+%patch -P 36 -p1
+%patch -P 37 -p1
+%patch -P 38 -p1
+%patch -P 39 -p1
 
-%patch40 -p1
-%patch41 -p1
-%patch42 -p1
-%patch43 -p1
-%patch44 -p1
-%patch45 -p1
-%patch46 -p1
-%patch47 -p1
-%patch48 -p1
-%patch49 -p1
-%patch50 -p1
-%patch51 -p1
-%patch52 -p1
-%patch53 -p1
-%patch54 -p1
+%patch -P 40 -p1
+%patch -P 41 -p1
+%patch -P 42 -p1
+%patch -P 43 -p1
+%patch -P 44 -p1
+%patch -P 45 -p1
+%patch -P 46 -p1
+%patch -P 47 -p1
+%patch -P 48 -p1
+%patch -P 49 -p1
+%patch -P 50 -p1
+%patch -P 51 -p1
+%patch -P 52 -p1
+%patch -P 53 -p1
+%patch -P 54 -p1
 
-%patch60 -p1
-%patch61 -p1
-%patch62 -p1
-%patch63 -p1
-%patch64 -p1
-%patch65 -p1
-%patch66 -p1
-%patch67 -p1
-%patch68 -p1
-%patch69 -p1
-%patch70 -p1
-%patch71 -p1
-%patch72 -p1
-%patch73 -p1
-%patch74 -p1
-%patch75 -p1
-%patch76 -p1
-%patch77 -p1
-%patch78 -p1
-%patch79 -p1
-%patch80 -p1
-%patch81 -p1
-%patch82 -p1
+%patch -P 60 -p1
+%patch -P 61 -p1
+%patch -P 62 -p1
+%patch -P 63 -p1
+%patch -P 64 -p1
+%patch -P 65 -p1
+%patch -P 66 -p1
+%patch -P 67 -p1
+%patch -P 68 -p1
+%patch -P 69 -p1
+%patch -P 70 -p1
+%patch -P 71 -p1
+%patch -P 72 -p1
+%patch -P 73 -p1
+%patch -P 74 -p1
+%patch -P 75 -p1
+%patch -P 76 -p1
+%patch -P 77 -p1
+%patch -P 78 -p1
+%patch -P 79 -p1
+%patch -P 80 -p1
+%patch -P 81 -p1
+%patch -P 82 -p1
 
-%patch83 -p1
-%patch84 -p1
+%patch -P 83 -p1
+%patch -P 84 -p1
 
-%patch85 -p1
-%patch86 -p1
-%patch87 -p1
-%patch88 -p1
+%patch -P 85 -p1
+%patch -P 86 -p1
+%patch -P 87 -p1
+%patch -P 88 -p1
 
-%patch89 -p1
-%patch90 -p1
+%patch -P 89 -p1
+%patch -P 90 -p1
 
-%patch91 -p1
-%patch92 -p1
-%patch93 -p1
-%patch94 -p1
-%patch95 -p1
-%patch96 -p1
-%patch97 -p1
-%patch98 -p1
+%patch -P 91 -p1
+%patch -P 92 -p1
+%patch -P 93 -p1
+%patch -P 94 -p1
+%patch -P 95 -p1
+%patch -P 96 -p1
+%patch -P 97 -p1
+%patch -P 98 -p1
 
-%patch100 -p1
-%patch101 -p1
-%patch102 -p1
-%patch103 -p1
-%patch104 -p1
-%patch105 -p1
-%patch106 -p1
-%patch107 -p1
-%patch108 -p1
-%patch109 -p1
-%patch110 -p1
-%patch111 -p1
-%patch112 -p1
-%patch113 -p1
-%patch114 -p1
-%patch115 -p1
-%patch116 -p1
-%patch117 -p1
-%patch118 -p1
-%patch119 -p1
+%patch -P 100 -p1
+%patch -P 101 -p1
+%patch -P 102 -p1
+%patch -P 103 -p1
+%patch -P 104 -p1
+%patch -P 105 -p1
+%patch -P 106 -p1
+%patch -P 107 -p1
+%patch -P 108 -p1
+%patch -P 109 -p1
+%patch -P 110 -p1
+%patch -P 111 -p1
+%patch -P 112 -p1
+%patch -P 113 -p1
+%patch -P 114 -p1
+%patch -P 115 -p1
+%patch -P 116 -p1
+%patch -P 117 -p1
+%patch -P 118 -p1
+%patch -P 119 -p1
 
-%patch120 -p1
-%patch121 -p1
-%patch122 -p1
-%patch123 -p1
-%patch124 -p1
-%patch125 -p1
-%patch126 -p1
-%patch127 -p1
-%patch128 -p1
-%patch129 -p1
-%patch130 -p1
-%patch131 -p1
-%patch132 -p1
-%patch133 -p1
-%patch134 -p1
-%patch135 -p1
-%patch136 -p1
-%patch137 -p1
-%patch138 -p1
-%patch139 -p1
-%patch140 -p1
-%patch141 -p1
-%patch142 -p1
-%patch143 -p1
-%patch144 -p1
-%patch145 -p1
-%patch146 -p1
-%patch147 -p1
-%patch148 -p1
-%patch149 -p1
-%patch150 -p1
-%patch151 -p1
-%patch152 -p1
-%patch153 -p1
-%patch154 -p1
-%patch155 -p1
-%patch156 -p1
-%patch157 -p1
-%patch158 -p1
-%patch159 -p1
-%patch160 -p1
-%patch161 -p1
-%patch162 -p1
-%patch163 -p1
-%patch164 -p1
-%patch165 -p1
-%patch166 -p1
-%patch167 -p1
-%patch168 -p1
-%patch169 -p1
-%patch170 -p1
-%patch171 -p1
-%patch172 -p1
-%patch173 -p1
-%patch174 -p1
-%patch175 -p1
-%patch176 -p1
-%patch177 -p1
-%patch178 -p1
-%patch179 -p1
-%patch180 -p1
-%patch181 -p1
-%patch182 -p1
-%patch183 -p1
-%patch184 -p1
-%patch185 -p1
-%patch186 -p1
-%patch187 -p1
-%patch188 -p1
-%patch189 -p1
-%patch190 -p1
-%patch191 -p1
-%patch192 -p1
-%patch193 -p1
-%patch194 -p1
-%patch195 -p1
-%patch196 -p1
-%patch197 -p1
-%patch198 -p1
-%patch199 -p1
-%patch200 -p1
-%patch201 -p1
-%patch202 -p1
-%patch203 -p1
-%patch204 -p1
-%patch205 -p1
-%patch206 -p1
-%patch207 -p1
-%patch208 -p1
-%patch209 -p1
-%patch210 -p1
-%patch211 -p1
+%patch -P 120 -p1
+%patch -P 121 -p1
+%patch -P 122 -p1
+%patch -P 123 -p1
+%patch -P 124 -p1
+%patch -P 125 -p1
+%patch -P 126 -p1
+%patch -P 127 -p1
+%patch -P 128 -p1
+%patch -P 129 -p1
+%patch -P 130 -p1
+%patch -P 131 -p1
+%patch -P 132 -p1
+%patch -P 133 -p1
+%patch -P 134 -p1
+%patch -P 135 -p1
+%patch -P 136 -p1
+%patch -P 137 -p1
+%patch -P 138 -p1
+%patch -P 139 -p1
+%patch -P 140 -p1
+%patch -P 141 -p1
+%patch -P 142 -p1
+%patch -P 143 -p1
+%patch -P 144 -p1
+%patch -P 145 -p1
+%patch -P 146 -p1
+%patch -P 147 -p1
+%patch -P 148 -p1
+%patch -P 149 -p1
+%patch -P 150 -p1
+%patch -P 151 -p1
+%patch -P 152 -p1
+%patch -P 153 -p1
+%patch -P 154 -p1
+%patch -P 155 -p1
+%patch -P 156 -p1
+%patch -P 157 -p1
+%patch -P 158 -p1
+%patch -P 159 -p1
+%patch -P 160 -p1
+%patch -P 161 -p1
+%patch -P 162 -p1
+%patch -P 163 -p1
+%patch -P 164 -p1
+%patch -P 165 -p1
+%patch -P 166 -p1
+%patch -P 167 -p1
+%patch -P 168 -p1
+%patch -P 169 -p1
+%patch -P 170 -p1
+%patch -P 171 -p1
+%patch -P 172 -p1
+%patch -P 173 -p1
+%patch -P 174 -p1
+%patch -P 175 -p1
+%patch -P 176 -p1
+%patch -P 177 -p1
+%patch -P 178 -p1
+%patch -P 179 -p1
+%patch -P 180 -p1
+%patch -P 181 -p1
+%patch -P 182 -p1
+%patch -P 183 -p1
+%patch -P 184 -p1
+%patch -P 185 -p1
+%patch -P 186 -p1
+%patch -P 187 -p1
+%patch -P 188 -p1
+%patch -P 189 -p1
+%patch -P 190 -p1
+%patch -P 191 -p1
+%patch -P 192 -p1
+%patch -P 193 -p1
+%patch -P 194 -p1
+%patch -P 195 -p1
+%patch -P 196 -p1
+%patch -P 197 -p1
+%patch -P 198 -p1
+%patch -P 199 -p1
+%patch -P 200 -p1
+%patch -P 201 -p1
+%patch -P 202 -p1
+%patch -P 203 -p1
+%patch -P 204 -p1
+%patch -P 205 -p1
+%patch -P 206 -p1
+%patch -P 207 -p1
+%patch -P 208 -p1
+%patch -P 209 -p1
+%patch -P 210 -p1
+%patch -P 211 -p1
 
-%patch212 -p1
-%patch213 -p1
-%patch214 -p1
-%patch215 -p1
-%patch216 -p1
-%patch217 -p1
-%patch218 -p1
+%patch -P 212 -p1
+%patch -P 213 -p1
+%patch -P 214 -p1
+%patch -P 215 -p1
+%patch -P 216 -p1
+%patch -P 217 -p1
+%patch -P 218 -p1
 
-%patch219 -p1
-%patch220 -p1
-%patch221 -p1
+%patch -P 219 -p1
+%patch -P 220 -p1
+%patch -P 221 -p1
 
-%patch222 -p1
-%patch223 -p1
+%patch -P 222 -p1
+%patch -P 223 -p1
 
-%patch224 -p1
-%patch225 -p1
-%patch226 -p1
-%patch227 -p1
-%patch228 -p1
+%patch -P 224 -p1
+%patch -P 225 -p1
+%patch -P 226 -p1
+%patch -P 227 -p1
+%patch -P 228 -p1
 
-%patch229 -p1
-%patch230 -p1
-%patch231 -p1
-%patch232 -p1
-%patch233 -p1
-%patch234 -p1
-%patch235 -p1
-%patch236 -p1
-%patch237 -p1
-%patch238 -p1
-%patch239 -p1
-%patch240 -p1
-%patch241 -p1
-%patch242 -p1
-%patch243 -p1
-%patch244 -p1
-%patch245 -p1
-%patch246 -p1
-%patch247 -p1
-%patch248 -p1
-%patch249 -p1
-%patch250 -p1
-%patch251 -p1
-%patch252 -p1
-%patch253 -p1
-%patch254 -p1
+%patch -P 229 -p1
+%patch -P 230 -p1
+%patch -P 231 -p1
+%patch -P 232 -p1
+%patch -P 233 -p1
+%patch -P 234 -p1
+%patch -P 235 -p1
+%patch -P 236 -p1
+%patch -P 237 -p1
+%patch -P 238 -p1
+%patch -P 239 -p1
+%patch -P 240 -p1
+%patch -P 241 -p1
+%patch -P 242 -p1
+%patch -P 243 -p1
+%patch -P 244 -p1
+%patch -P 245 -p1
+%patch -P 246 -p1
+%patch -P 247 -p1
+%patch -P 248 -p1
+%patch -P 249 -p1
+%patch -P 250 -p1
+%patch -P 251 -p1
+%patch -P 252 -p1
+%patch -P 253 -p1
+%patch -P 254 -p1
 
-%patch260 -p1
-%patch261 -p1
-%patch262 -p1
-%patch263 -p1
-%patch264 -p1
-%patch265 -p1
-%patch266 -p1
-%patch267 -p1
-%patch268 -p1
-%patch269 -p1
-%patch270 -p1
-%patch271 -p1
-%patch272 -p1
-%patch273 -p1
-%patch274 -p1
-%patch275 -p1
+%patch -P 260 -p1
+%patch -P 261 -p1
+%patch -P 262 -p1
+%patch -P 263 -p1
+%patch -P 264 -p1
+%patch -P 265 -p1
+%patch -P 266 -p1
+%patch -P 267 -p1
+%patch -P 268 -p1
+%patch -P 269 -p1
+%patch -P 270 -p1
+%patch -P 271 -p1
+%patch -P 272 -p1
+%patch -P 273 -p1
+%patch -P 274 -p1
+%patch -P 275 -p1
 
-%patch300 -p1
-%patch301 -p1
-%patch302 -p1
-%patch303 -p1
-%patch304 -p1
-%patch305 -p1
-%patch306 -p1
-%patch307 -p1
-%patch308 -p1
-%patch309 -p1
-%patch310 -p1
-%patch311 -p1
-%patch312 -p1
-%patch313 -p1
-%patch314 -p1
-%patch315 -p1
-%patch316 -p1
-%patch317 -p1
-%patch318 -p1
-%patch319 -p1
-%patch320 -p1
-%patch321 -p1
-%patch322 -p1
-%patch323 -p1
-%patch324 -p1
-%patch325 -p1
-%patch326 -p1
+%patch -P 300 -p1
+%patch -P 301 -p1
+%patch -P 302 -p1
+%patch -P 303 -p1
+%patch -P 304 -p1
+%patch -P 305 -p1
+%patch -P 306 -p1
+%patch -P 307 -p1
+%patch -P 308 -p1
+%patch -P 309 -p1
+%patch -P 310 -p1
+%patch -P 311 -p1
+%patch -P 312 -p1
+%patch -P 313 -p1
+%patch -P 314 -p1
+%patch -P 315 -p1
+%patch -P 316 -p1
+%patch -P 317 -p1
+%patch -P 318 -p1
+%patch -P 319 -p1
+%patch -P 320 -p1
+%patch -P 321 -p1
+%patch -P 322 -p1
+%patch -P 323 -p1
+%patch -P 324 -p1
+%patch -P 325 -p1
+%patch -P 326 -p1
 
-%patch327 -p1
-%patch328 -p1
+%patch -P 327 -p1
+%patch -P 328 -p1
 
-%patch329 -p1
-%patch330 -p1
+%patch -P 329 -p1
+%patch -P 330 -p1
 
-%patch331 -p1
+%patch -P 331 -p1
 
-%patch332 -p1
-%patch333 -p1
-%patch334 -p1
-%patch335 -p1
-%patch336 -p1
-%patch337 -p1
+%patch -P 332 -p1
+%patch -P 333 -p1
+%patch -P 334 -p1
+%patch -P 335 -p1
+%patch -P 336 -p1
+%patch -P 337 -p1
 
-%patch338 -p1
+%patch -P 338 -p1
+
+%patch -P 339 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -820,6 +824,12 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Mon Apr 07 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.3
+- RHEL-84118 - autofs hang - autofs-5.1.4-114.el8_10.2
+  - fix lock ordering deadlock in expire_cleanup().
+  - change spec file %patchN to %patch -P N as required by rpm(8).
+- Resolves: RHEL-84118
+
 * Wed Jan 15 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.2
 - RHEL-72524 - autofs: deadlock between mnts_lookup_mount and mnts_remove_mount
   - fix deadlock in master_notify_submount().
