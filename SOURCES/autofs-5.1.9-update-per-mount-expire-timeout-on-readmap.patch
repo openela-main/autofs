@@ -1,0 +1,225 @@
+autofs-5.1.9 - update per-mount expire timeout on readmap
+
+From: Ian Kent <raven@themaw.net>
+
+Ensure read map requests are propagated to child submounts and update
+the amd per-mount timeout.
+
+Also update the logging text to remove the use of the word dentry as
+it might not make sense to users.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 
+ daemon/master.c     |    2 
+ daemon/state.c      |    1 
+ include/master.h    |    1 
+ include/mounts.h    |    1 
+ lib/mounts.c        |  122 ++++++++++++++++++++++++++++++++++++++++++++++++++++
+ modules/parse_amd.c |    6 +-
+ 7 files changed, 130 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -176,6 +176,7 @@
+ - fix lookup search type in umount_subtree_mounts().
+ - fix remount_active_mount() not remounting symlinks.
+ - log when setting amd per-mount timeout.
++- update per-mount expire timeout on readmap.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/master.c
++++ autofs-5.1.7/daemon/master.c
+@@ -1379,7 +1379,7 @@ static int master_do_mount(struct master
+ 	return 1;
+ }
+ 
+-static void check_update_map_sources(struct master_mapent *entry, int readall)
++void check_update_map_sources(struct master_mapent *entry, int readall)
+ {
+ 	struct map_source *source, *last;
+ 	struct autofs_point *ap;
+--- autofs-5.1.7.orig/daemon/state.c
++++ autofs-5.1.7/daemon/state.c
+@@ -428,6 +428,7 @@ static void *do_readmap(void *arg)
+ 		time_t timeout = get_exp_timeout(ap, ap->entry->maps);
+ 		ap->exp_runfreq = (timeout + CHECK_RATIO - 1) / CHECK_RATIO;
+ 		ops->timeout(ap->logopt, ap->ioctlfd, NULL, timeout);
++		update_mounted_mounts_timeout(ap, ap->path);
+ 		lookup_prune_cache(ap, now);
+ 		status = lookup_ghost(ap);
+ 	} else {
+--- autofs-5.1.7.orig/include/master.h
++++ autofs-5.1.7/include/master.h
+@@ -115,6 +115,7 @@ struct master *master_new(const char *,
+ int master_read_master(struct master *, time_t);
+ int master_notify_submount(struct autofs_point *, const char *path, enum states);
+ void master_notify_state_change(struct master *, int);
++void check_update_map_sources(struct master_mapent *, int);
+ int master_mount_mounts(struct master *, time_t);
+ int dump_map(struct master *, const char *, const char *);
+ int master_show_mounts(struct master *);
+--- autofs-5.1.7.orig/include/mounts.h
++++ autofs-5.1.7/include/mounts.h
+@@ -197,6 +197,7 @@ const char *mount_type_str(unsigned int)
+ void set_exp_timeout(struct autofs_point *ap, struct map_source *source, time_t timeout);
+ time_t get_exp_timeout(struct autofs_point *ap, struct map_source *source);
+ void notify_mount_result(struct autofs_point *, const char *, time_t, const char *);
++void update_mounted_mounts_timeout(struct autofs_point *, const char *);
+ int try_remount(struct autofs_point *, struct mapent *, unsigned int);
+ void set_indirect_mount_tree_catatonic(struct autofs_point *);
+ void set_direct_mount_tree_catatonic(struct autofs_point *, struct mapent *);
+--- autofs-5.1.7.orig/lib/mounts.c
++++ autofs-5.1.7/lib/mounts.c
+@@ -2622,6 +2622,128 @@ void notify_mount_result(struct autofs_p
+ 	return;
+ }
+ 
++void update_mounted_mounts_timeout(struct autofs_point *ap, const char *path)
++{
++	struct ioctl_ops *ops = get_ioctl_ops();
++	struct dirent **de;
++	char buf[PATH_MAX + 1];
++	int n, size;
++
++	n = scandir(path, &de, 0, alphasort);
++	if (n < 0)
++		return;
++
++	size = sizeof(buf);
++
++	while (n--) {
++		unsigned int mounted = 0;
++		struct mnt_list *mnt;
++		int ret;
++
++		if (strcmp(de[n]->d_name, ".") == 0 ||
++		    strcmp(de[n]->d_name, "..") == 0) {
++			free(de[n]);
++			continue;
++		}
++
++		ret = cat_path(buf, size, path, de[n]->d_name);
++		if (!ret) {
++			do {
++				free(de[n]);
++			} while (n--);
++			free(de);
++			return;
++		}
++
++		ops->ismountpoint(ap->logopt, -1, buf, &mounted);
++		if (!mounted) {
++			struct dirent **de2;
++			int i, j;
++
++			i = j = scandir(buf, &de2, 0, alphasort);
++			if (i < 0) {
++				free(de[n]);
++				continue;
++			}
++			while (i--)
++				free(de2[i]);
++			free(de2);
++			if (j <= 2) {
++				free(de[n]);
++				continue;
++			}
++		}
++
++		/* For submounts we need to propogate the read map
++		 * request.
++		 */
++		mnt = mnts_find_submount(buf);
++		if (mnt) {
++			check_update_map_sources(mnt->ap->entry, 1);
++			mnts_put_mount(mnt);
++		}
++
++		mnt = mnts_find_amdmount(buf);
++		if (!mnt) {
++			free(de[n]);
++			continue;
++		}
++
++		/* For amd type auto mounts the timeout is the per-mount
++		 * timeout.
++		 */
++		if (mnt->amd_flags & AMD_MOUNT_TYPE_AUTO)
++			goto next;
++
++		/* No per-mount timeout set? */
++		if (!(mnt->amd_flags & AMD_MOUNT_OPT_MASK))
++			goto next;
++
++		/* The default in autofs is to always expire mounts according to
++		 * a timeout set in the autofs mount super block information
++		 * structure. But amd allows for differing expire timeouts on a
++		 * per-mount basis. It also has (context sensitive) options "unmount"
++		 * to say expire this mount and "nounmount" to say don't expire this
++		 * mount. In amd mounts these options are set by default according
++		 * to whether a mount should expire or not, for example a cd mount
++		 * is set "nounmount". Setting defaults like this is not used in the
++		 * autofs amd implementation because there's only one, little used,
++		 * removable file system available.
++		 *
++		 * But the "nounmount" and "utimeout" options can be useful.
++		 */
++		if (mnt->amd_flags & AMD_MOUNT_OPT_NOUNMOUNT) {
++			if (mnt->amd_utimeout)
++				warn(ap->logopt,
++				"non-zero timeout set, possible conflicting options");
++
++			/* "nounmount" option, don't expire this mount. */
++			if (ops) {
++				info(ap->logopt,
++				     "set amd per-mount expire timeout to 0 for %s",
++				     buf);
++				ops->timeout(ap->logopt, ap->ioctlfd, de[n]->d_name, 0);
++			}
++		} else if (mnt->amd_flags & AMD_MOUNT_OPT_UTIMEOUT) {
++			if (!mnt->amd_utimeout)
++				warn(ap->logopt,
++				"zero timeout set, possible conflicting options");
++
++			/* "utimeout" option, expire this mount according to a timeout. */
++			if (ops) {
++				info(ap->logopt,
++				     "set amd per-mount expire timeout to %d for %s",
++				     mnt->amd_utimeout, buf);
++				ops->timeout(ap->logopt, ap->ioctlfd, de[n]->d_name, mnt->amd_utimeout);
++			}
++		}
++next:
++		mnts_put_mount(mnt);
++		free(de[n]);
++	}
++	free(de);
++}
++
+ static int do_remount_direct(struct autofs_point *ap,
+ 			     const unsigned int type, int fd, const char *path)
+ {
+--- autofs-5.1.7.orig/modules/parse_amd.c
++++ autofs-5.1.7/modules/parse_amd.c
+@@ -1758,7 +1758,7 @@ static int amd_mount(struct autofs_point
+ 			if (ops) {
+ 				info(ap->logopt,
+ 				     "set amd per-mount expire timeout to 0 for %s",
+-				     name);
++				     entry->path);
+ 				ops->timeout(ap->logopt, ap->ioctlfd, name, 0);
+ 			}
+ 		} else if (per_mnt_flags & AMD_MOUNT_OPT_UTIMEOUT) {
+@@ -1769,8 +1769,8 @@ static int amd_mount(struct autofs_point
+ 			/* "utimeout" option, expire this mount according to a timeout. */
+ 			if (ops) {
+ 				info(ap->logopt,
+-				     "set amd per-dentry expire timeout to %d for %s",
+-				     entry->utimeout, name);
++				     "set amd per-mount expire timeout to %d for %s",
++				     entry->utimeout, entry->path);
+ 				ops->timeout(ap->logopt, ap->ioctlfd, name, entry->utimeout);
+ 			}
+ 		}

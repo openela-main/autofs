@@ -1,0 +1,72 @@
+autofs-5.1.7 - clear per-mount timeout if not set
+
+From: Ian Kent <raven@themaw.net>
+
+If the per-mount timeout isn't set in the amd map entry clear it so
+that updates that remove the setting are seen.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ lib/mounts.c        |    8 +++++++-
+ modules/parse_amd.c |   12 ++++++++----
+ 3 files changed, 16 insertions(+), 5 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -177,6 +177,7 @@
+ - fix remount_active_mount() not remounting symlinks.
+ - log when setting amd per-mount timeout.
+ - update per-mount expire timeout on readmap.
++- clear per-mount timeout if not set.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/lib/mounts.c
++++ autofs-5.1.7/lib/mounts.c
+@@ -2696,8 +2696,14 @@ void update_mounted_mounts_timeout(struc
+ 			goto next;
+ 
+ 		/* No per-mount timeout set? */
+-		if (!(mnt->amd_flags & AMD_MOUNT_OPT_MASK))
++		if (!(mnt->amd_flags & AMD_MOUNT_OPT_MASK)) {
++			/* Per-mount timeout setting isn't present, reset to
++			 * be sure updates are seen.
++			 */
++			if (ops)
++				ops->timeout(ap->logopt, ap->ioctlfd, de[n]->d_name, -1);
+ 			goto next;
++		}
+ 
+ 		/* The default in autofs is to always expire mounts according to
+ 		 * a timeout set in the autofs mount super block information
+--- autofs-5.1.7.orig/modules/parse_amd.c
++++ autofs-5.1.7/modules/parse_amd.c
+@@ -1720,10 +1720,16 @@ static int amd_mount(struct autofs_point
+ 	}
+ 
+ 	if (!ret) {
+-		struct ioctl_ops *ops;
++		struct ioctl_ops *ops = get_ioctl_ops();
+ 
+-		if (!(per_mnt_flags & AMD_MOUNT_OPT_MASK))
++		if (!(per_mnt_flags & AMD_MOUNT_OPT_MASK)) {
++			/* Per-mount timeout setting isn't present, reset to
++			 * be sure updates are seen.
++			 */
++			if (ops)
++				ops->timeout(ap->logopt, ap->ioctlfd, name, -1);
+ 			goto done;
++		}
+ 
+ 		/* The mount succeeded, make sure there's no path component
+ 		 * seperator in "name" as it must be the last component of
+@@ -1734,8 +1740,6 @@ static int amd_mount(struct autofs_point
+ 			goto done;
+ 		}
+ 
+-		ops = get_ioctl_ops();
+-
+ 		/* The default in autofs is to always expire mounts according to
+ 		 * a timeout set in the autofs mount super block information
+ 		 * structure. But amd allows for differing expire timeouts on a

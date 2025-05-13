@@ -1,0 +1,51 @@
+autofs-5.1.9 - log when setting amd per-mount timeout
+
+From: Ian Kent <raven@themaw.net>
+
+Log action when setting amd per-mount expire timeout.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |   12 ++++++++++--
+ 2 files changed, 11 insertions(+), 2 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -175,6 +175,7 @@
+ - fix submount shutdown race.
+ - fix lookup search type in umount_subtree_mounts().
+ - fix remount_active_mount() not remounting symlinks.
++- log when setting amd per-mount timeout.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/modules/parse_amd.c
++++ autofs-5.1.7/modules/parse_amd.c
+@@ -1755,16 +1755,24 @@ static int amd_mount(struct autofs_point
+ 				"non-zero timeout set, possible conflicting options");
+ 
+ 			/* "nounmount" option, don't expire this mount. */
+-			if (ops)
++			if (ops) {
++				info(ap->logopt,
++				     "set amd per-mount expire timeout to 0 for %s",
++				     name);
+ 				ops->timeout(ap->logopt, ap->ioctlfd, name, 0);
++			}
+ 		} else if (per_mnt_flags & AMD_MOUNT_OPT_UTIMEOUT) {
+ 			if (!entry->utimeout)
+ 				warn(ap->logopt,
+ 				"zero timeout set, possible conflicting options");
+ 
+ 			/* "utimeout" option, expire this mount according to a timeout. */
+-			if (ops)
++			if (ops) {
++				info(ap->logopt,
++				     "set amd per-dentry expire timeout to %d for %s",
++				     entry->utimeout, name);
+ 				ops->timeout(ap->logopt, ap->ioctlfd, name, entry->utimeout);
++			}
+ 		}
+ 	}
+ done:

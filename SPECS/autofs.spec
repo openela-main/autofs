@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 58%{?dist}
+Release: 60%{?dist}
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
@@ -191,6 +191,34 @@ Patch177: autofs-5.1.8-fix-multi-mount-check.patch
 
 Patch178: autofs-5.1.9-fix-get-parent-multi-mount-check-in-try_remount.patch
 Patch179: autofs-5.1.9-fix-deadlock-in-remount.patch
+
+# JIRA: RHEL-69485
+Patch180: autofs-5.1.9-fix-amd-external-mount-error-handling.patch
+Patch181: autofs-5.1.9-fix-amd-external-mount-mount-handling.patch
+Patch182: autofs-5.1.9-dont-free-ext-mount-if-mounted.patch
+Patch183: autofs-5.1.9-refactor-amd-function-do_program_mount.patch
+Patch184: autofs-5.1.9-refactor-amd-function-umount_amd_ext_mount.patch
+Patch185: autofs-5.1.9-add-flags-argument-to-amd-do_program_mount.patch
+
+# JIRA: RHEL-71359
+Patch186: autofs-5.1.9-fix-amd-cache-options-not-copied.patch
+Patch187: autofs-5.1.9-seperate-amd-mount-and-entry-flags.patch
+Patch188: autofs-5.1.9-make-ioctl-ops-timeout-handle-per-dentry-expire.patch
+Patch189: autofs-5.1.9-refactor-amd-mount-options-handling.patch
+Patch190: autofs-5.1.9-add-some-unimplemented-amd-map-options.patch
+
+# JIRA: RHEL-57466
+Patch200: autofs-5.1.9-fix-submount-shutdown-race.patch
+
+# JIRA: RHEL-71359 updates and fixes
+Patch201: autofs-5.1.9-fix-lookup-search-type-in-umount_subtree_mounts.patch
+Patch202: autofs-5.1.9-fix-remount_active_mount-not-remounting-symlinks.patch
+Patch203: autofs-5.1.9-log-when-setting-amd-per-mount-timeout.patch
+Patch204: autofs-5.1.9-update-per-mount-expire-timeout-on-readmap.patch
+Patch205: autofs-5.1.7-clear-per-mount-timeout-if-not-set.patch
+
+# JIRA: RHEL-77321
+Patch206: autofs-5.1.9-fix-deadlock-in-master_notify_submount.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -427,6 +455,29 @@ echo %{version}-%{release} > .version
 %patch178 -p1
 %patch179 -p1
 
+%patch180 -p1
+%patch181 -p1
+%patch182 -p1
+%patch183 -p1
+%patch184 -p1
+%patch185 -p1
+
+%patch186 -p1
+%patch187 -p1
+%patch188 -p1
+%patch189 -p1
+%patch190 -p1
+
+%patch200 -p1
+
+%patch201 -p1
+%patch202 -p1
+%patch203 -p1
+%patch204 -p1
+%patch205 -p1
+
+%patch206 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure \
@@ -534,6 +585,36 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Thu Feb 06 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-60
+- RHEL-77321 - autofs: deadlock between mnts_lookup_mount and mnts_remove_mount
+  - fix deadlock in master_notify_submount().
+- Resolves: RHEL-77321
+
+* Mon Dec 16 2024 Ian Kent <ikent@redhat.com> - 1:5.1.7-59
+- RHEL-69485 - Sporadic mount failures with amd program maps on RHEL8
+  - fix amd external mount error handling.
+  - fix amd external mount mount handling.
+  - don't free ext mount if mounted.
+  - refactor amd function do_program_mount().
+  - refactor umount_amd_ext_mount().
+  - add flags argument to amd do_program_mount().
+- Resolves: RHEL-69485
+- RHEL-71359 RFE: autofs: add handling for AMD 'nounmount' option
+  - fix amd cache options not copied.
+  - seperate amd mount and entry flags.
+  - make iocl ops ->timeout() handle per-dentry expire.
+  - refactor amd mount options handling.
+  - add some unimplemented amd map options.
+  - fix lookup search type in umount_subtree_mounts().
+  - fix remount_active_mount() not remounting symlinks.
+  - log when setting amd per-mount timeout.
+  - update per-mount expire timeout on readmap.
+  - clear per-mount timeout if not set.
+- Resolves: RHEL-71359
+- RHEL-57466 - RHEL9.4 - autofs crashes on startup after IDM client configuration
+  - fix submount shutdown race.
+- Resolves: RHEL-57466
+
 * Fri Dec 22 2023 Ian Kent <ikent@redhat.com> - 1:5.1.7-58
 - RHEL-19731 - SIGSEGV using hierarchical map entries on reload with
   autofs-5.1.4-109

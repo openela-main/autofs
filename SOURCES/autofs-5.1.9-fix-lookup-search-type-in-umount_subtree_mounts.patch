@@ -1,0 +1,34 @@
+autofs-5.1.9 - fix lookup search type in umount_subtree_mounts()
+
+From: Ian Kent <raven@themaw.net>
+
+The lookup type used in umount_subtree_mounts() should be LKP_DISTINCT
+because we're looking for existing cache entries.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -173,6 +173,7 @@
+ - refactor amd mount options handling.
+ - add some unimplemented amd map options.
+ - fix submount shutdown race.
++- fix lookup search type in umount_subtree_mounts().
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/automount.c
++++ autofs-5.1.7/daemon/automount.c
+@@ -543,7 +543,7 @@ static int umount_subtree_mounts(struct
+ 		if (ind_key)
+ 			ind_key++;
+ 
+-		me = lookup_source_mapent(ap, ind_key, LKP_NORMAL);
++		me = lookup_source_mapent(ap, ind_key, LKP_DISTINCT);
+ 	}
+ 
+ 	if (me) {

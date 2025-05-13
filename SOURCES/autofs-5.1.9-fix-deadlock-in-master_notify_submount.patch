@@ -1,0 +1,66 @@
+autofs-5.1.9 - fix deadlock in master_notify_submount()
+
+From: Ian Kent <raven@themaw.net>
+
+A deadlock between mnts_remove_submount() and master_notify_submount()
+can occur because master_notify_submount() holds the state mutex over
+a call to mnts_find_submount() which then needs to take mnts_hash_mutex.
+But mnts_remove_submount() takes mnts_hash_mutex and then needs to take
+the state mutex to clear the ->ap field so deadlock cann occur.
+
+But it isn't necessary for master_notify_submount() to take the state
+mutex before calling mnts_find_submount() because if the submount is'
+found a reference is taken on the entry so it won't go away while it's
+being used. All that's needed is to ensure that the ->ap field doesn't
+get set to NULL by mnts_remove_submount() while it's being used to check
+if the submount has shutdown.
+
+Fixes: 81ac572466e3 ("autofs-5.1.9 - fix submount shutdown race")
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/master.c |    7 +++----
+ 2 files changed, 4 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -178,6 +178,7 @@
+ - log when setting amd per-mount timeout.
+ - update per-mount expire timeout on readmap.
+ - clear per-mount timeout if not set.
++- fix deadlock in master_notify_submount().
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/master.c
++++ autofs-5.1.7/daemon/master.c
+@@ -1237,26 +1237,25 @@ int master_notify_submount(struct autofs
+ 		 * ST_SHUTDOWN_FORCE we need to wait until it goes away
+ 		 * or changes to state ST_SHUTDOWN or ST_READY.
+ 		 */
+-		st_mutex_lock();
+ 		while ((sbmnt = mnts_find_submount(path))) {
+ 			struct timespec t = { 0, 300000000 };
+ 			struct timespec r;
+ 
++			st_mutex_lock();
+ 			if (!sbmnt->ap ||
+ 			   (sbmnt->ap->state != ST_SHUTDOWN_PENDING &&
+ 			    sbmnt->ap->state != ST_SHUTDOWN_FORCE)) {
+ 				ret = 0;
++				st_mutex_unlock();
+ 				mnts_put_mount(sbmnt);
+ 				break;
+ 			}
++			st_mutex_unlock();
+ 			mnts_put_mount(sbmnt);
+ 
+-			st_mutex_unlock();
+ 			while (nanosleep(&t, &r) == -1 && errno == EINTR)
+ 				memcpy(&t, &r, sizeof(struct timespec));
+-			st_mutex_lock();
+ 		}
+-		st_mutex_unlock();
+ done:
+ 		mnts_put_mount(this);
+ 	}

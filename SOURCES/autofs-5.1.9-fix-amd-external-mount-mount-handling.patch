@@ -1,0 +1,71 @@
+autofs-5.1.9 - fix amd external mount mount handling
+
+From: Ian Kent <raven@themaw.net>
+
+Amd external mounts exist outside of the autofs file system and need
+extra effort to try and keep track of them so they are mounted and
+umounted when they should be.
+
+Cleanup cases where an external mount is already mounted.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |   21 ++++++++++++---------
+ 2 files changed, 13 insertions(+), 9 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -162,6 +162,7 @@
+ - fix get parent multi-mount check in try_remount().
+ - fix deadlock in remount.
+ - fix amd external mount error handling.
++- fix amd external mount mount handling.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/modules/parse_amd.c
++++ autofs-5.1.7/modules/parse_amd.c
+@@ -1182,8 +1182,9 @@ static int do_generic_mount(struct autof
+ 			umount = 1;
+ 		}
+ 		/* If we have an external mount add it to the list */
+-		if (umount && !ext_mount_add(entry->fs, entry->umount)) {
+-			umount_amd_ext_mount(ap, entry->fs);
++		if (!ext_mount_add(entry->fs, entry->umount)) {
++			if (umount)
++				umount_amd_ext_mount(ap, entry->fs);
+ 			error(ap->logopt, MODPREFIX
+ 			      "error: could not add external mount %s",
+ 			      entry->fs);
+@@ -1232,8 +1233,9 @@ static int do_nfs_mount(struct autofs_po
+ 			umount = 1;
+ 		}
+ 		/* We might be using an external mount */
+-		if (umount && !ext_mount_add(entry->fs, entry->umount)) {
+-			umount_amd_ext_mount(ap, entry->fs);
++		if (!ext_mount_add(entry->fs, entry->umount)) {
++			if (umount)
++				umount_amd_ext_mount(ap, entry->fs);
+ 			error(ap->logopt, MODPREFIX
+ 			      "error: could not add external mount %s", entry->fs);
+ 			ret = 1;
+@@ -1435,12 +1437,13 @@ static int do_program_mount(struct autof
+ 	 * before executing the mount command and removing it at
+ 	 * umount.
+ 	 */
+-	if (ext_mount_inuse(entry->fs)) {
++	if (is_mounted(entry->fs, MNTS_REAL)) {
++		if (!ext_mount_add(entry->fs, entry->umount)) {
++			error(ap->logopt, MODPREFIX
++			      "error: could not add external mount %s", entry->fs);
++			goto out;
++		}
+ 		rv = 0;
+-		/* An external mount with path entry->fs exists
+-		 * so ext_mount_add() won't fail.
+-		 */
+-		ext_mount_add(entry->fs, entry->umount);
+ 	} else {
+ 		rv = mkdir_path(entry->fs, mp_mode);
+ 		if (rv && errno != EEXIST) {
