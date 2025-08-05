@@ -1,0 +1,41 @@
+autofs-5.1.9 - Fix incompatible function pointer types in cyrus-sasl module
+
+From: Florian Weimer <fweimer@redhat.com>
+
+Add casts to SASL callbacks to avoid incompatible-pointer-types
+errors.  Avoids a build failure with stricter compilers.
+
+Signed-off-by: Florian Weimer <fweimer@redhat.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/cyrus-sasl.c |    8 ++++----
+ 2 files changed, 5 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -180,6 +180,7 @@
+ - clear per-mount timeout if not set.
+ - fix deadlock in master_notify_submount().
+ - fix lock ordering deadlock in expire_cleanup().
++- Fix incompatible function pointer types in cyrus-sasl module.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/modules/cyrus-sasl.c
++++ autofs-5.1.7/modules/cyrus-sasl.c
+@@ -109,10 +109,10 @@ static int getpass_func(sasl_conn_t *, v
+ static int getuser_func(void *, int, const char **, unsigned *);
+ 
+ static sasl_callback_t callbacks[] = {
+-	{ SASL_CB_LOG, &sasl_log_func, NULL },
+-	{ SASL_CB_USER, &getuser_func, NULL },
+-	{ SASL_CB_AUTHNAME, &getuser_func, NULL },
+-	{ SASL_CB_PASS, &getpass_func, NULL },
++	{ SASL_CB_LOG, (int(*)(void)) &sasl_log_func, NULL },
++	{ SASL_CB_USER, (int(*)(void)) &getuser_func, NULL },
++	{ SASL_CB_AUTHNAME, (int(*)(void)) &getuser_func, NULL },
++	{ SASL_CB_PASS, (int(*)(void)) &getpass_func, NULL },
+ 	{ SASL_CB_LIST_END, NULL, NULL },
+ };
+ 

@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 60%{?dist}
+Release: 60%{?dist}.1
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
@@ -220,6 +220,10 @@ Patch205: autofs-5.1.7-clear-per-mount-timeout-if-not-set.patch
 # JIRA: RHEL-77321
 Patch206: autofs-5.1.9-fix-deadlock-in-master_notify_submount.patch
 
+# JIRA: RHEL-99167
+Patch207: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
+Patch208: autofs-5.1.9-Fix-incompatible-function-pointer-types-in-cyrus-sasl-module.patch
+
 %if %{with_systemd}
 BuildRequires: systemd-units
 BuildRequires: systemd-devel
@@ -285,198 +289,199 @@ echo %{version}-%{release} > .version
 %endif
 # patches 1 and 2 have been applied to the source tar to remove
 # lib/mount.x as it has an incompatible license.
-#%patch1 -p1
-#%patch2 -p1
-%patch3 -p1
-%patch4 -p1
-%patch5 -p1
-%patch6 -p1
-%patch7 -p1
-%patch8 -p1
-%patch9 -p1
-%patch10 -p1
-%patch11 -p1
-%patch12 -p1
-%patch13 -p1
-%patch14 -p1
-%patch15 -p1
-%patch16 -p1
-%patch17 -p1
-%patch18 -p1
-%patch19 -p1
-%patch20 -p1
-%patch21 -p1
-%patch22 -p1
-%patch23 -p1
-%patch24 -p1
-%patch25 -p1
-%patch26 -p1
-%patch27 -p1
-%patch28 -p1
-%patch29 -p1
-%patch30 -p1
-%patch31 -p1
-%patch32 -p1
-%patch33 -p1
-%patch34 -p1
-%patch35 -p1
-%patch36 -p1
-%patch37 -p1
-%patch38 -p1
-%patch39 -p1
-%patch40 -p1
-%patch41 -p1
-%patch42 -p1
-%patch43 -p1
-%patch44 -p1
-%patch45 -p1
-%patch46 -p1
-%patch47 -p1
-%patch48 -p1
-%patch49 -p1
-%patch50 -p1
-%patch51 -p1
-%patch52 -p1
-%patch53 -p1
-%patch54 -p1
-%patch55 -p1
-%patch56 -p1
-%patch57 -p1
-%patch58 -p1
-%patch59 -p1
-%patch60 -p1
-%patch61 -p1
-%patch62 -p1
-%patch63 -p1
-%patch64 -p1
-%patch65 -p1
-%patch66 -p1
-%patch67 -p1
-%patch68 -p1
-%patch69 -p1
-%patch70 -p1
-%patch71 -p1
-%patch72 -p1
-%patch73 -p1
-%patch74 -p1
-%patch75 -p1
-%patch76 -p1
-%patch77 -p1
-%patch78 -p1
-%patch79 -p1
-%patch80 -p1
-%patch81 -p1
+%patch -P 3 -p1
+%patch -P 4 -p1
+%patch -P 5 -p1
+%patch -P 6 -p1
+%patch -P 7 -p1
+%patch -P 8 -p1
+%patch -P 9 -p1
+%patch -P 10 -p1
+%patch -P 11 -p1
+%patch -P 12 -p1
+%patch -P 13 -p1
+%patch -P 14 -p1
+%patch -P 15 -p1
+%patch -P 16 -p1
+%patch -P 17 -p1
+%patch -P 18 -p1
+%patch -P 19 -p1
+%patch -P 20 -p1
+%patch -P 21 -p1
+%patch -P 22 -p1
+%patch -P 23 -p1
+%patch -P 24 -p1
+%patch -P 25 -p1
+%patch -P 26 -p1
+%patch -P 27 -p1
+%patch -P 28 -p1
+%patch -P 29 -p1
+%patch -P 30 -p1
+%patch -P 31 -p1
+%patch -P 32 -p1
+%patch -P 33 -p1
+%patch -P 34 -p1
+%patch -P 35 -p1
+%patch -P 36 -p1
+%patch -P 37 -p1
+%patch -P 38 -p1
+%patch -P 39 -p1
+%patch -P 40 -p1
+%patch -P 41 -p1
+%patch -P 42 -p1
+%patch -P 43 -p1
+%patch -P 44 -p1
+%patch -P 45 -p1
+%patch -P 46 -p1
+%patch -P 47 -p1
+%patch -P 48 -p1
+%patch -P 49 -p1
+%patch -P 50 -p1
+%patch -P 51 -p1
+%patch -P 52 -p1
+%patch -P 53 -p1
+%patch -P 54 -p1
+%patch -P 55 -p1
+%patch -P 56 -p1
+%patch -P 57 -p1
+%patch -P 58 -p1
+%patch -P 59 -p1
+%patch -P 60 -p1
+%patch -P 61 -p1
+%patch -P 62 -p1
+%patch -P 63 -p1
+%patch -P 64 -p1
+%patch -P 65 -p1
+%patch -P 66 -p1
+%patch -P 67 -p1
+%patch -P 68 -p1
+%patch -P 69 -p1
+%patch -P 70 -p1
+%patch -P 71 -p1
+%patch -P 72 -p1
+%patch -P 73 -p1
+%patch -P 74 -p1
+%patch -P 75 -p1
+%patch -P 76 -p1
+%patch -P 77 -p1
+%patch -P 78 -p1
+%patch -P 79 -p1
+%patch -P 80 -p1
+%patch -P 81 -p1
 
-%patch82 -p1
-%patch83 -p1
-%patch84 -p1
-%patch85 -p1
+%patch -P 82 -p1
+%patch -P 83 -p1
+%patch -P 84 -p1
+%patch -P 85 -p1
 
-%patch86 -p1
-%patch87 -p1
-%patch88 -p1
-%patch89 -p1
-%patch90 -p1
-%patch91 -p1
-%patch92 -p1
-%patch93 -p1
-%patch94 -p1
-%patch95 -p1
-%patch96 -p1
-%patch97 -p1
-%patch98 -p1
-%patch99 -p1
-%patch100 -p1
-%patch101 -p1
-%patch102 -p1
+%patch -P 86 -p1
+%patch -P 87 -p1
+%patch -P 88 -p1
+%patch -P 89 -p1
+%patch -P 90 -p1
+%patch -P 91 -p1
+%patch -P 92 -p1
+%patch -P 93 -p1
+%patch -P 94 -p1
+%patch -P 95 -p1
+%patch -P 96 -p1
+%patch -P 97 -p1
+%patch -P 98 -p1
+%patch -P 99 -p1
+%patch -P 100 -p1
+%patch -P 101 -p1
+%patch -P 102 -p1
 
-%patch103 -p1
-%patch104 -p1
-%patch105 -p1
-%patch106 -p1
-%patch107 -p1
-%patch108 -p1
-%patch109 -p1
-%patch110 -p1
-%patch111 -p1
-%patch112 -p1
-%patch113 -p1
-%patch114 -p1
-%patch115 -p1
-%patch116 -p1
+%patch -P 103 -p1
+%patch -P 104 -p1
+%patch -P 105 -p1
+%patch -P 106 -p1
+%patch -P 107 -p1
+%patch -P 108 -p1
+%patch -P 109 -p1
+%patch -P 110 -p1
+%patch -P 111 -p1
+%patch -P 112 -p1
+%patch -P 113 -p1
+%patch -P 114 -p1
+%patch -P 115 -p1
+%patch -P 116 -p1
 
-%patch120 -p1
-%patch121 -p1
-%patch122 -p1
-%patch123 -p1
-%patch124 -p1
-%patch125 -p1
-%patch126 -p1
-%patch127 -p1
-%patch128 -p1
-%patch129 -p1
-%patch130 -p1
-%patch131 -p1
-%patch132 -p1
-%patch133 -p1
-%patch134 -p1
-%patch135 -p1
+%patch -P 120 -p1
+%patch -P 121 -p1
+%patch -P 122 -p1
+%patch -P 123 -p1
+%patch -P 124 -p1
+%patch -P 125 -p1
+%patch -P 126 -p1
+%patch -P 127 -p1
+%patch -P 128 -p1
+%patch -P 129 -p1
+%patch -P 130 -p1
+%patch -P 131 -p1
+%patch -P 132 -p1
+%patch -P 133 -p1
+%patch -P 134 -p1
+%patch -P 135 -p1
 
-%patch150 -p1
-%patch151 -p1
-%patch152 -p1
-%patch153 -p1
-%patch154 -p1
-%patch155 -p1
-%patch156 -p1
-%patch157 -p1
-%patch158 -p1
-%patch159 -p1
-%patch160 -p1
-%patch161 -p1
-%patch162 -p1
-%patch163 -p1
-%patch164 -p1
-%patch165 -p1
-%patch166 -p1
-%patch167 -p1
-%patch168 -p1
-%patch169 -p1
-%patch170 -p1
-%patch171 -p1
-%patch172 -p1
-%patch173 -p1
-%patch174 -p1
-%patch175 -p1
+%patch -P 150 -p1
+%patch -P 151 -p1
+%patch -P 152 -p1
+%patch -P 153 -p1
+%patch -P 154 -p1
+%patch -P 155 -p1
+%patch -P 156 -p1
+%patch -P 157 -p1
+%patch -P 158 -p1
+%patch -P 159 -p1
+%patch -P 160 -p1
+%patch -P 161 -p1
+%patch -P 162 -p1
+%patch -P 163 -p1
+%patch -P 164 -p1
+%patch -P 165 -p1
+%patch -P 166 -p1
+%patch -P 167 -p1
+%patch -P 168 -p1
+%patch -P 169 -p1
+%patch -P 170 -p1
+%patch -P 171 -p1
+%patch -P 172 -p1
+%patch -P 173 -p1
+%patch -P 174 -p1
+%patch -P 175 -p1
 
-%patch176 -p1
-%patch177 -p1
+%patch -P 176 -p1
+%patch -P 177 -p1
 
-%patch178 -p1
-%patch179 -p1
+%patch -P 178 -p1
+%patch -P 179 -p1
 
-%patch180 -p1
-%patch181 -p1
-%patch182 -p1
-%patch183 -p1
-%patch184 -p1
-%patch185 -p1
+%patch -P 180 -p1
+%patch -P 181 -p1
+%patch -P 182 -p1
+%patch -P 183 -p1
+%patch -P 184 -p1
+%patch -P 185 -p1
 
-%patch186 -p1
-%patch187 -p1
-%patch188 -p1
-%patch189 -p1
-%patch190 -p1
+%patch -P 186 -p1
+%patch -P 187 -p1
+%patch -P 188 -p1
+%patch -P 189 -p1
+%patch -P 190 -p1
 
-%patch200 -p1
+%patch -P 200 -p1
 
-%patch201 -p1
-%patch202 -p1
-%patch203 -p1
-%patch204 -p1
-%patch205 -p1
+%patch -P 201 -p1
+%patch -P 202 -p1
+%patch -P 203 -p1
+%patch -P 204 -p1
+%patch -P 205 -p1
 
-%patch206 -p1
+%patch -P 206 -p1
+
+%patch -P 207 -p1
+%patch -P 208 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -585,6 +590,14 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Mon Jun 23 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-60.el9_6.1
+- RHEL-99167 - autofs hang - autofs-5.1.4-114.el8_10.2 [rhel-9.6.z]
+  - fix lock ordering deadlock in expire_cleanup().
+  - change spec file %patchN to %patch -P N as required by rpm(8).
+  - Fix compile error caused by function pointer types in cyrus-sasl module.
+  - removed references to patch1 and patch2 due to rbmbuild(8) complaints.
+- Resolves: RHEL-99167
+
 * Thu Feb 06 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-60
 - RHEL-77321 - autofs: deadlock between mnts_lookup_mount and mnts_remove_mount
   - fix deadlock in master_notify_submount().
