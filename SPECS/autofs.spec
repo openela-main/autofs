@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 114%{?dist}.4
+Release: 114%{?dist}.5
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -349,6 +349,9 @@ Patch339: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
 Patch340: autofs-5.1.6-fix-ldap-sasl-reconnect-problem.patch
 Patch341: autofs-5.1.8-always-recreate-credential-cache.patch
 Patch342: autofs-5.1.9-fix-always-recreate-credential-cache.patch
+
+# JIRA: RHEL-111930
+Patch343: autofs-5.1.8-fix-missing-unlock-in-sasl_do_kinit_ext_cc.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -739,6 +742,8 @@ echo %{version}-%{release} > .version
 %patch -P 341 -p1
 %patch -P 342 -p1
 
+%patch -P 343 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -833,6 +838,11 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Mon Sep 01 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.5
+- RHEL-111930 - automount blocked when attempting to lookup ldap maps
+  - fix missing unlock in sasl_do_kinit_ext_cc().
+- Resolves: RHEL-111930
+
 * Mon Jun 09 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.4
 - RHEL-90238 - autofs fails to mount shares when using kerberised LDAP (RHEL 8)
   - fix ldap sasl reconnect problem.
