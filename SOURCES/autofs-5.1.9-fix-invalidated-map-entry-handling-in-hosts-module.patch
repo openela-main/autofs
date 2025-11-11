@@ -1,0 +1,40 @@
+autofs-5.1.9 - fix invalidated map entry handling in hosts module
+
+From: Ian Kent <raven@themaw.net>
+
+The multi-mount handling must be able to deal with NFS auto-mounting
+mounts itself within a mount tree. If this happens the mapent will have
+its ->mapent set to NULL but will not be marked with a negative timeout
+and mount attempts should silently succeed. All lookup modules handle
+this ok already except the hosts lookup module so fix it.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG              |    1 +
+ modules/lookup_hosts.c |    5 +++++
+ 2 files changed, 6 insertions(+)
+
+--- autofs-5.1.9.orig/CHANGELOG
++++ autofs-5.1.9/CHANGELOG
+@@ -21,6 +21,7 @@
+ - fix deadlock in master_notify_submount().
+ - fix lock ordering deadlock in expire_cleanup().
+ - fix handling of ignored offsets.
++- fix invalidated map entry handling in hosts module.
+ 
+ 02/11/2023 autofs-5.1.9
+ - fix kernel mount status notification.
+--- autofs-5.1.9.orig/modules/lookup_hosts.c
++++ autofs-5.1.9/modules/lookup_hosts.c
+@@ -428,6 +428,11 @@ int lookup_mount(struct autofs_point *ap
+ 	 * it must be a mount request for one of the exports.
+ 	 */
+ 	if (*name == '/') {
++		/* Multi-mounts must be able to ignore offsets that have
++		 * been auto-mounted by NFS itself.
++		 */
++		if (!me->mapent)
++			return NSS_STATUS_SUCCESS;
+ 		pthread_cleanup_push(cache_lock_cleanup, mc);
+ 		mapent_len = strlen(me->mapent);
+ 		mapent = malloc(mapent_len + 1);

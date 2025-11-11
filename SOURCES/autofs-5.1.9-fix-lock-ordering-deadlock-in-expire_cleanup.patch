@@ -1,0 +1,77 @@
+autofs-5.1.9 - fix lock ordering deadlock in expire_cleanup()
+
+From: Ian Kent <raven@themaw.net>
+
+Commit 81ac572466e3 ("autofs-5.1.9 - fix submount shutdown race")
+introduced a lock ordering deadlock between the state mutex and the
+mounts hash list mutex when fixing a submount shutdown race. It's enough
+to just move the conditional alarm set function call outside of the
+state mutex critical section to fix it.
+
+Fixes: 81ac572466e3 ("autofs-5.1.9 - fix submount shutdown race")
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG      |    1 +
+ daemon/state.c |   12 ++++++++----
+ 2 files changed, 9 insertions(+), 4 deletions(-)
+
+--- autofs-5.1.9.orig/CHANGELOG
++++ autofs-5.1.9/CHANGELOG
+@@ -19,6 +19,7 @@
+ - add some unimplemented amd map options.
+ - fix submount shutdown race.
+ - fix deadlock in master_notify_submount().
++- fix lock ordering deadlock in expire_cleanup().
+ 
+ 02/11/2023 autofs-5.1.9
+ - fix kernel mount status notification.
+--- autofs-5.1.9.orig/daemon/state.c
++++ autofs-5.1.9/daemon/state.c
+@@ -62,8 +62,9 @@ void expire_cleanup(void *arg)
+ 	pthread_t thid = pthread_self();
+ 	struct expire_args *ec;
+ 	struct autofs_point *ap;
+-	int success;
+ 	enum states next = ST_INVAL;
++	unsigned int need_alarm = 0;
++	int success;
+ 
+ 	ec = (struct expire_args *) arg;
+ 	ap = ec->ap;
+@@ -99,7 +100,7 @@ void expire_cleanup(void *arg)
+ 			}
+ 
+ 			if (ap->state == ST_EXPIRE)
+-				conditional_alarm_add(ap, ap->exp_runfreq);
++				need_alarm = 1;
+ 
+ 			/* FALLTHROUGH */
+ 
+@@ -116,7 +117,7 @@ void expire_cleanup(void *arg)
+ 			rv = ops->askumount(ap->logopt, ap->ioctlfd, &idle);
+ 			if (!rv && !idle && !ap->shutdown) {
+ 				next = ST_READY;
+-				conditional_alarm_add(ap, ap->exp_runfreq);
++				need_alarm = 1;
+ 				break;
+ 			}
+ 
+@@ -129,7 +130,7 @@ void expire_cleanup(void *arg)
+ 
+ 			/* Failed shutdown returns to ready */
+ 			warn(ap->logopt, "filesystem %s still busy", ap->path);
+-			conditional_alarm_add(ap, ap->exp_runfreq);
++			need_alarm = 1;
+ 			next = ST_READY;
+ 			break;
+ #endif
+@@ -156,6 +157,9 @@ void expire_cleanup(void *arg)
+ 
+ 	st_mutex_unlock();
+ 
++	if (need_alarm)
++		conditional_alarm_add(ap, ap->exp_runfreq);
++
+ 	return;
+ }
+ 

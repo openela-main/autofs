@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.9
-Release: 11%{?dist}
+Release: 13%{?dist}
 Epoch: 1
 License: GPL-2.0-or-later
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}.tar.gz
@@ -34,6 +34,15 @@ Patch14: autofs-5.1.9-seperate-amd-mount-and-entry-flags.patch
 Patch15: autofs-5.1.9-make-ioctl-ops-timeout-handle-per-dentry-expire.patch
 Patch16: autofs-5.1.9-refactor-amd-mount-options-handling.patch
 Patch17: autofs-5.1.9-add-some-unimplemented-amd-map-options.patch
+
+# RHEL-87525
+Patch20: autofs-5.1.9-fix-submount-shutdown-race.patch
+Patch21: autofs-5.1.9-fix-deadlock-in-master_notify_submount.patch
+Patch22: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
+
+# RHEL-90571
+Patch30: autofs-5.1.9-fix-handling-of-ignored-offsets.patch
+Patch31: autofs-5.1.9-fix-invalidated-map-entry-handling-in-hosts-module.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -206,6 +215,19 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Mon May 12 2025 Ian Kent <ikent@redhat.com> - 1:5.1.9-13
+- RHEL-90571 - autofs: segfault while dereferencing null mapent [rhel-10]
+  - fix handling of ignored offsets.
+  - fix invalidated map entry handling in hosts module.
+- Resolves: RHEL-90571
+
+* Wed Apr 30 2025 Ian Kent <ikent@redhat.com> - 1:5.1.9-12
+- RHEL-87525 - autofs hang - autofs-5.1.4-114.el8_10.2 [rhel-10]
+  - fix submount shutdown race.
+  - fix deadlock in master_notify_submount().
+  - fix lock ordering deadlock in expire_cleanup().
+- Resolves: RHEL-87525
+
 * Tue Oct 29 2024 Troy Dawson <tdawson@redhat.com> - 1:5.1.9-11
 - Bump release for October 2024 mass rebuild:
   Resolves: RHEL-64018

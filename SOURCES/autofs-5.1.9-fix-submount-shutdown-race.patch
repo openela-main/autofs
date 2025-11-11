@@ -1,0 +1,89 @@
+autofs-5.1.9 - fix submount shutdown race
+
+From: Ian Kent <raven@themaw.net>
+
+In function master_notify_submount() an expire notification is sent to
+existing submounts. automount waits for the task to complete then, if
+the submount is exiting, waits for the submount to reach a completion
+state.
+
+But the submount can go away during these checks resulting in the
+autofs mount point structure field of the mount list structure to be
+set to NULL which can then lead to a crash.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/master.c |   23 +++++++++++++----------
+ lib/mounts.c    |    2 ++
+ 3 files changed, 16 insertions(+), 10 deletions(-)
+
+--- autofs-5.1.9.orig/CHANGELOG
++++ autofs-5.1.9/CHANGELOG
+@@ -17,6 +17,7 @@
+ - make iocl ops ->timeout() handle per-dentry expire.
+ - refactor amd mount options handling.
+ - add some unimplemented amd map options.
++- fix submount shutdown race.
+ 
+ 02/11/2023 autofs-5.1.9
+ - fix kernel mount status notification.
+--- autofs-5.1.9.orig/daemon/master.c
++++ autofs-5.1.9/daemon/master.c
+@@ -1222,22 +1222,24 @@ int master_notify_submount(struct autofs
+ 
+ 	this = mnts_find_submount(path);
+ 	if (this) {
++		struct autofs_point *found;
++
+ 		/* We have found a submount to expire */
+ 		st_mutex_lock();
+-
+-		if (this->ap->state == ST_SHUTDOWN) {
++		found = this->ap;
++		if (!found || found->state == ST_SHUTDOWN) {
+ 			this = NULL;
+ 			st_mutex_unlock();
+ 			goto done;
+ 		}
+-
+-		this->ap->shutdown = ap->shutdown;
+-
+-		__st_add_task(this->ap, state);
+-
++		found->shutdown = ap->shutdown;
++		__st_add_task(found, state);
+ 		st_mutex_unlock();
+ 
+-		st_wait_task(this->ap, state, 0);
++		/* This is ok because found isn't dereferenced during
++		 * the wait checks.
++		 */
++		st_wait_task(found, state, 0);
+ 
+ 		/*
+ 		 * If our submount gets to state ST_SHUTDOWN_PENDING or
+@@ -1249,8 +1251,9 @@ int master_notify_submount(struct autofs
+ 			struct timespec t = { 0, 300000000 };
+ 			struct timespec r;
+ 
+-			if (sbmnt->ap->state != ST_SHUTDOWN_PENDING &&
+-			    sbmnt->ap->state != ST_SHUTDOWN_FORCE) {
++			if (!sbmnt->ap ||
++			   (sbmnt->ap->state != ST_SHUTDOWN_PENDING &&
++			    sbmnt->ap->state != ST_SHUTDOWN_FORCE)) {
+ 				ret = 0;
+ 				mnts_put_mount(sbmnt);
+ 				break;
+--- autofs-5.1.9.orig/lib/mounts.c
++++ autofs-5.1.9/lib/mounts.c
+@@ -1136,7 +1136,9 @@ void mnts_remove_submount(const char *mp
+ 	this = mnts_lookup(mp);
+ 	if (this && this->flags & MNTS_AUTOFS) {
+ 		this->flags &= ~MNTS_AUTOFS;
++		st_mutex_lock();
+ 		this->ap = NULL;
++		st_mutex_unlock();
+ 		list_del_init(&this->submount);
+ 		__mnts_put_mount(this);
+ 	}
