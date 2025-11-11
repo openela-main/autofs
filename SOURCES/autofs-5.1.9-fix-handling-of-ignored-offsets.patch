@@ -1,0 +1,89 @@
+autofs-5.1.9 - fix handling of ignored offsets
+
+From: Ian Kent <raven@themaw.net>
+
+If a map entry offset path already has a real mount mounted on it then
+it's ignored as it has very likely been auto-mounted by the NFS client.
+
+But we have seen a case were autofs incorrectly makes a function call
+that attempts to mount the offset tree mounts again after successfully
+mounting the real mount on the offset. This causes automount(8) to see
+this as an NFS auto-mounted mount to be ignored and then incorrectly
+invalidates these offsets.
+
+Guard against this by flagging offset trigger mounts as mounted when
+they are initially successfully mounted and clearing it upon umounting
+them.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ daemon/direct.c     |    3 +++
+ include/automount.h |    3 +++
+ lib/mounts.c        |    7 ++++++-
+ 4 files changed, 13 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -182,6 +182,7 @@
+ - handle sss special case getautomntbyname() error.
+ - fix lock ordering deadlock in expire_cleanup().
+ - Fix incompatible function pointer types in cyrus-sasl module.
++- fix handling of ignored offsets.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/direct.c
++++ autofs-5.1.7/daemon/direct.c
+@@ -539,6 +539,7 @@ int umount_autofs_offset(struct autofs_p
+ 			debug(ap->logopt,
+ 			      "offset %s not mounted",
+ 			      me->key);
++			me->flags &= ~MOUNT_FLAG_OFFSET_MOUNTED;
+ 			return 0;
+ 		}
+ 		ioctlfd = open_ioctlfd(ap, me->key, me->dev);
+@@ -627,6 +628,7 @@ force_umount:
+ 		rv = umount2(me->key, MNT_DETACH);
+ 	} else
+ 		info(ap->logopt, "umounted offset mount %s", me->key);
++	me->flags &= ~MOUNT_FLAG_OFFSET_MOUNTED;
+ 
+ 	return rv;
+ }
+@@ -781,6 +783,7 @@ int mount_autofs_offset(struct autofs_po
+ 	cache_set_ino_index(me->mc, me);
+ 	notify_mount_result(ap, me->key, timeout, str_offset);
+ 	ops->close(ap->logopt, ioctlfd);
++	me->flags |= MOUNT_FLAG_OFFSET_MOUNTED;
+ 
+ 	debug(ap->logopt, "mounted trigger %s", me->key);
+ 
+--- autofs-5.1.7.orig/include/automount.h
++++ autofs-5.1.7/include/automount.h
+@@ -543,6 +543,9 @@ struct kernel_mod_version {
+ /* Indicator for applications to ignore the mount entry */
+ #define MOUNT_FLAG_IGNORE		0x1000
+ 
++/* Flag to show we have mounted the offset mount trigger */
++#define MOUNT_FLAG_OFFSET_MOUNTED	0x2000
++
+ struct autofs_point {
+ 	pthread_t thid;
+ 	char *path;			/* Mount point name */
+--- autofs-5.1.7.orig/lib/mounts.c
++++ autofs-5.1.7/lib/mounts.c
+@@ -1882,7 +1882,12 @@ static int tree_mapent_mount_offset(stru
+ 		if (ret != MOUNT_OFFSET_IGNORE) {
+ 			warn(ap->logopt, "failed to mount offset");
+ 			return 0;
+-		} else {
++		}
++
++		/* Only invalidate the offset trigger if a real mount
++		 * is not covering it.
++		 */
++		if (!(oe->flags & MOUNT_FLAG_OFFSET_MOUNTED)) {
+ 			debug(ap->logopt,
+ 			      "ignoring \"nohide\" trigger %s", oe->key);
+ 			/*

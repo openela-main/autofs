@@ -1,0 +1,49 @@
+autofs-5.1.9 - handle sss special case getautomntbyname() error
+
+From: Ian Kent <raven@themaw.net>
+
+The sss key lookup (via getautomntbyname()) returns EHOSTDOWN when the
+entry is invalid, such as when the location is empty. But setatomntent()
+has already been called successfully so we know the host is up and the
+map exists hence this probably should be EINVAL.
+
+In both these cases the better return is NSS_STATUS_UNAVAIL.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG            |    1 +
+ modules/lookup_sss.c |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -179,6 +179,7 @@
+ - update per-mount expire timeout on readmap.
+ - clear per-mount timeout if not set.
+ - fix deadlock in master_notify_submount().
++- handle sss special case getautomntbyname() error.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/modules/lookup_sss.c
++++ autofs-5.1.7/modules/lookup_sss.c
+@@ -658,8 +658,8 @@ static int getautomntbyname(unsigned int
+ 				err = NSS_STATUS_NOTFOUND;
+ 				goto free;
+ 			}
+-			if (ret != EHOSTDOWN)
+-				goto error;
++			if (ret == EINVAL || ret == EHOSTDOWN)
++				goto free;
+ 		}
+ 
+ 		ret = getautomntbyname_wait(logopt, ctxt,
+@@ -670,7 +670,7 @@ static int getautomntbyname(unsigned int
+ 			if (ret == ETIMEDOUT)
+ 				goto error;
+ 			/* sss proto version 0 and sss timeout not set */
+-			if (ret == EINVAL)
++			if (ret == EINVAL || ret == EHOSTDOWN)
+ 				goto free;
+ 			if (ret == ENOENT) {
+ 				err = NSS_STATUS_NOTFOUND;

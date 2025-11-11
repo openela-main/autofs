@@ -14,9 +14,9 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.1.7.orig/CHANGELOG
 +++ autofs-5.1.7/CHANGELOG
-@@ -180,6 +180,7 @@
- - clear per-mount timeout if not set.
+@@ -181,6 +181,7 @@
  - fix deadlock in master_notify_submount().
+ - handle sss special case getautomntbyname() error.
  - fix lock ordering deadlock in expire_cleanup().
 +- Fix incompatible function pointer types in cyrus-sasl module.
  

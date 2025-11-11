@@ -31,10 +31,10 @@ Signed-off-by: Ian Kent <raven@themaw.net>
 
 --- autofs-5.1.7.orig/CHANGELOG
 +++ autofs-5.1.7/CHANGELOG
-@@ -179,6 +179,7 @@
- - update per-mount expire timeout on readmap.
+@@ -180,6 +180,7 @@
  - clear per-mount timeout if not set.
  - fix deadlock in master_notify_submount().
+ - handle sss special case getautomntbyname() error.
 +- fix lock ordering deadlock in expire_cleanup().
  
  25/01/2021 autofs-5.1.7

@@ -12,15 +12,13 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 60%{?dist}.1
+Release: 65%{?dist}
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
 
 # patches 1 and 2 have been applied to the source tar to remove
 # lib/mount.x as it has an incompatible license.
-#Patch1: autofs-5.1.7-add-xdr_exports.patch
-#Patch2: autofs-5.1.7-remove-mount_x-and-rpcgen-dependencies.patch
 Patch3: autofs-5.1.7-dont-use-realloc-in-host-exports-list-processing.patch
 Patch4: autofs-5.1.7-use-sprintf-when-constructing-hosts-mapent.patch
 Patch5: autofs-5.1.7-fix-mnts_remove_amdmount-uses-wrong-list.patch
@@ -220,9 +218,20 @@ Patch205: autofs-5.1.7-clear-per-mount-timeout-if-not-set.patch
 # JIRA: RHEL-77321
 Patch206: autofs-5.1.9-fix-deadlock-in-master_notify_submount.patch
 
-# JIRA: RHEL-99167
-Patch207: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
-Patch208: autofs-5.1.9-Fix-incompatible-function-pointer-types-in-cyrus-sasl-module.patch
+#JIRA: RHEL-32684
+Patch207: autofs-5.1.9-handle-sss-special-case-getautomntbyname-error.patch
+
+#JIRA: RHEL-87031
+Patch208: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
+Patch209: autofs-5.1.9-Fix-incompatible-function-pointer-types-in-cyrus-sasl-module.patch
+
+#JIRA: RHEL-81885
+Patch210: autofs-5.1.9-fix-handling-of-ignored-offsets.patch
+Patch211: autofs-5.1.9-fix-invalidated-map-entry-handling-in-hosts-module.patch
+
+#JIRA: RHEL-85615
+Patch212: autofs-5.1.8-always-recreate-credential-cache.patch
+Patch213: autofs-5.1.9-fix-always-recreate-credential-cache.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -479,9 +488,13 @@ echo %{version}-%{release} > .version
 %patch -P 205 -p1
 
 %patch -P 206 -p1
-
 %patch -P 207 -p1
 %patch -P 208 -p1
+%patch -P 209 -p1
+%patch -P 210 -p1
+%patch -P 211 -p1
+%patch -P 212 -p1
+%patch -P 213 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -590,13 +603,32 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Mon Jun 23 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-60.el9_6.1
-- RHEL-99167 - autofs hang - autofs-5.1.4-114.el8_10.2 [rhel-9.6.z]
+* Tue May 13 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-65
+- RHEL-85615 - autofs fails to mount shares when using kerberised LDAP
+  - always recreate credential cache.
+  - fix always recreate credential cache.
+-Resolves: RHEL-85615
+
+* Wed May 07 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-64
+- RHEL-81885 - autofs: segfault while dereferencing null mapent
+  - fix handling of ignored offsets.
+  - fix invalidated map entry handling in hosts module.
+  - fix changelog revision number of previous change.
+- Resolves: RHEL-81885
+
+* Wed Apr 16 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-63
+- RHEL-87031 - autofs hang - autofs-5.1.4-114.el8_10.2
   - fix lock ordering deadlock in expire_cleanup().
   - change spec file %patchN to %patch -P N as required by rpm(8).
   - Fix compile error caused by function pointer types in cyrus-sasl module.
   - removed references to patch1 and patch2 due to rbmbuild(8) complaints.
-- Resolves: RHEL-99167
+- Resolves: RHEL-87031
+
+* Fri Mar 14 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-61
+- RHEL-32684 - sssd autofs fails to get correct EHOSTDOWN if requested
+  incorrect mount after upgrade to sssd-2.9.1-4.el8_9.5.x86_64
+  - handle sss special case getautomntbyname() error
+- Resolves: RHEL-32684
 
 * Thu Feb 06 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-60
 - RHEL-77321 - autofs: deadlock between mnts_lookup_mount and mnts_remove_mount
