@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 114%{?dist}.5
+Release: 114%{?dist}.6
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -352,6 +352,9 @@ Patch342: autofs-5.1.9-fix-always-recreate-credential-cache.patch
 
 # JIRA: RHEL-111930
 Patch343: autofs-5.1.8-fix-missing-unlock-in-sasl_do_kinit_ext_cc.patch
+
+# JIRA: RHEL-127179
+Patch344: autofs-5.1.9-handle-sss-special-case-getautomntbyname-error.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -744,6 +747,8 @@ echo %{version}-%{release} > .version
 
 %patch -P 343 -p1
 
+%patch -P 344 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -838,6 +843,13 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Tue Nov 25 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.6
+- RHEL-127179 - sssd autofs fails to get correct EHOSTDOWN if requested
+  incorrect mount after upgrade to sssd-2.9.1-4.el8_9.5.x86_64
+  [rhel-8.10.z]
+  - handle sss special case getautomntbyname() error.
+- Resolves: RHEL-127179
+
 * Mon Sep 01 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.5
 - RHEL-111930 - automount blocked when attempting to lookup ldap maps
   - fix missing unlock in sasl_do_kinit_ext_cc().
