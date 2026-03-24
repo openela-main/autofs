@@ -1,0 +1,35 @@
+autofs-5.1.9 - quiet possibly noisy log message
+
+From: Ian Kent <raven@themaw.net>
+
+The message that logs when a mount is already mounted and only the
+timeout will be updated on map re-read can create a lot of noise in
+the log for direct mount maps. But this is normal operation and is of
+limited value for both direct and indirect maps, so remove it.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |    1 -
+ 2 files changed, 1 insertion(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -179,6 +179,7 @@
+ - clear per-mount timeout if not set.
+ - fix incorrect flags update in update_with_defaults().
+ - skip expire check for amd nounmount mounts.
++- quiet possibly noisy log message.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/lib/mounts.c
++++ autofs-5.1.4/lib/mounts.c
+@@ -2890,7 +2890,6 @@ static int remount_active_mount(struct a
+ 
+ 	/* Re-reading the map, set timeout and return */
+ 	if (ap->state == ST_READMAP) {
+-		debug(ap->logopt, "already mounted, update timeout");
+ 		ops->timeout(ap->logopt, fd, NULL, timeout);
+ 		ops->close(ap->logopt, fd);
+ 		return REMOUNT_READ_MAP;

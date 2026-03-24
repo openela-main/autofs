@@ -1,0 +1,41 @@
+autofs-5.1.9 - fix incorrect flags update in update_with_defaults()
+
+From: Ian Kent <raven@themaw.net>
+
+After adding support for some additional am-utils map entry options at
+least one of them, "nounmount", and probably others don't work in some
+cases.
+
+This is because some of them are is implemented using a flag in the map
+entry which was incorrectly being cleared during updating the entry with
+current defaults.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG           |    1 +
+ modules/parse_amd.c |    4 +++-
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -177,6 +177,7 @@
+ - log when setting amd per-mount timeout.
+ - update per-mount expire timeout on readmap.
+ - clear per-mount timeout if not set.
++- fix incorrect flags update in update_with_defaults().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/modules/parse_amd.c
++++ autofs-5.1.4/modules/parse_amd.c
+@@ -654,7 +654,9 @@ static void update_with_defaults(struct
+ 		if (deftype != AMD_MOUNT_TYPE_NONE)
+ 			entry->flags |= (defaults->flags & AMD_MOUNT_TYPE_MASK);
+ 		else {
+-			entry->flags = AMD_MOUNT_TYPE_NFS;
++			unsigned long per_mnt_flags = entry->flags & AMD_MOUNT_OPT_MASK;
++
++			entry->flags = AMD_MOUNT_TYPE_NFS | per_mnt_flags;
+ 			tmp = strdup("nfs");
+ 			if (tmp)
+ 				entry->type = tmp;

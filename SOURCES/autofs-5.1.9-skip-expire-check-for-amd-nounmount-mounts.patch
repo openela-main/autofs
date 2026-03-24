@@ -1,0 +1,36 @@
+autofs-5.1.9 - skip expire check for amd nounmount mounts
+
+From: Ian Kent <raven@themaw.net>
+
+There's no need to check amd mounts with the "nounmount" option set.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG         |    1 +
+ daemon/indirect.c |    5 +++++
+ 2 files changed, 6 insertions(+)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -178,6 +178,7 @@
+ - update per-mount expire timeout on readmap.
+ - clear per-mount timeout if not set.
+ - fix incorrect flags update in update_with_defaults().
++- skip expire check for amd nounmount mounts.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/indirect.c
++++ autofs-5.1.4/daemon/indirect.c
+@@ -377,6 +377,11 @@ void *expire_proc_indirect(void *arg)
+ 		char *ind_key;
+ 		int ret;
+ 
++		/* No need to check "nounmount" amd mounts */
++		if (mnt->flags & MNTS_AMD_MOUNT &&
++		    mnt->amd_flags & AMD_MOUNT_OPT_NOUNMOUNT)
++			continue;
++
+ 		if (mnt->flags & (MNTS_AUTOFS|MNTS_OFFSET)) {
+ 			/*
+ 			 * If we have submounts check if this path lives below

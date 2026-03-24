@@ -1,0 +1,51 @@
+autofs-5.1.9 - fix skip valid map entries on expire cleanup
+
+From: Ian Kent <raven@themaw.net>
+
+After an expire if the current map entry is stale because it could not
+be cleaned up during the map entry prune (due to the presence of a real
+mount) it needs to be cleaned up after a successful expire.
+
+Currently this is done by update_map_cache() if the entry is contained
+in an invalid map but it should be doing it if the entry is no longer
+valid. In addition, if update_map_cache() gets called the umount has
+been successful so the ioctlfd does not need to be checked (and is in
+fact updated later in the expire process).
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    9 ++-------
+ 2 files changed, 3 insertions(+), 7 deletions(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -182,6 +182,7 @@
+ - quiet possibly noisy log message.
+ - fix devid update on reload.
+ - fix cache writelock must be taken in update_map_cache().
++- fix skip valid map entries on expire cleanup.
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -505,16 +505,11 @@ static void update_map_cache(struct auto
+ 	while (map) {
+ 		struct mapent *me = NULL;
+ 
+-		/* Skip current, in-use cache */
+-		if (ap->entry->age <= map->age) {
+-			map = map->next;
+-			continue;
+-		}
+-
+ 		mc = map->mc;
+ 		cache_writelock(mc);
+ 		me = cache_lookup_distinct(mc, key);
+-		if (me && me->ioctlfd == -1)
++		/* Only for invalid map entries */
++		if (me && map->age > me->age)
+ 			cache_delete(mc, key);
+ 		cache_unlock(mc);
+ 

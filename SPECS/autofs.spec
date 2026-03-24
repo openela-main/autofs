@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 114%{?dist}.6
+Release: 114%{?dist}.8
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -355,6 +355,33 @@ Patch343: autofs-5.1.8-fix-missing-unlock-in-sasl_do_kinit_ext_cc.patch
 
 # JIRA: RHEL-127179
 Patch344: autofs-5.1.9-handle-sss-special-case-getautomntbyname-error.patch
+
+# JIRA: RHEL-46409
+Patch350: autofs-5.1.9-fix-amd-cache-options-not-copied.patch
+Patch351: autofs-5.1.9-seperate-amd-mount-and-entry-flags.patch
+Patch352: autofs-5.1.9-make-ioctl-ops-timeout-handle-per-dentry-expire.patch
+Patch353: autofs-5.1.9-refactor-amd-mount-options-handling.patch
+Patch354: autofs-5.1.9-add-some-unimplemented-amd-map-options.patch
+Patch355: autofs-5.1.9-fix-lookup-search-type-in-umount_subtree_mounts.patch
+Patch356: autofs-5.1.9-fix-remount_active_mount-not-remounting-symlinks.patch
+Patch357: autofs-5.1.9-log-when-setting-amd-per-mount-timeout.patch
+Patch358: autofs-5.1.9-update-per-mount-expire-timeout-on-readmap.patch
+Patch359: autofs-5.1.7-clear-per-mount-timeout-if-not-set.patch
+Patch360: autofs-5.1.9-fix-incorrect-flags-update-in-update_with_defaults.patch
+Patch361: autofs-5.1.9-skip-expire-check-for-amd-nounmount-mounts.patch
+
+# JIRA: RHEL-RHEL-97546
+Patch370: autofs-5.1.9-quiet-possibly-noisy-log-message.patch
+Patch371: autofs-5.1.9-fix-devid-update-on-reload.patch
+Patch372: autofs-5.1.9-fix-cache-writelock-must-be-taken-in-update_map_cache.patch
+Patch373: autofs-5.1.9-fix-skip-valid-map-entries-on-expire-cleanup.patch
+Patch374: autofs-5.1.9-remove-unnecessary-call-to-set_direct_mount_tree_catatonic.patch
+Patch375: autofs-5.1.9-remove-unnecessary-assignment-in-umount_multi.patch
+Patch376: autofs-5.1.9-fix-direct-mount-trigger-umount-failure-case.patch
+Patch377: autofs-5.1.9-refactor-do_umount_autofs_direct.patch
+Patch378: autofs-5.1.9-fix-stale-direct-mount-trigger-not-umounted-on-expire.patch
+Patch379: autofs-5.1.9-add-function-table_lookup_ino.patch
+Patch380: autofs-5.1.9-improve-handling-of-missing-map-entry-for-mount-request.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -749,6 +776,31 @@ echo %{version}-%{release} > .version
 
 %patch -P 344 -p1
 
+%patch -P 350 -p1
+%patch -P 351 -p1
+%patch -P 352 -p1
+%patch -P 353 -p1
+%patch -P 354 -p1
+%patch -P 355 -p1
+%patch -P 356 -p1
+%patch -P 357 -p1
+%patch -P 358 -p1
+%patch -P 359 -p1
+%patch -P 360 -p1
+%patch -P 361 -p1
+
+%patch -P 370 -p1
+%patch -P 371 -p1
+%patch -P 372 -p1
+%patch -P 373 -p1
+%patch -P 374 -p1
+%patch -P 375 -p1
+%patch -P 376 -p1
+%patch -P 377 -p1
+%patch -P 378 -p1
+%patch -P 379 -p1
+%patch -P 380 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -843,6 +895,37 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Fri Feb 27 2026 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.8
+- RHEL-97546 - hung tasks after autofs reload
+  - quiet possibly noisy log message.
+  - fix devid update on reload.
+  - fix cache writelock must be taken in update_map_cache().
+  - fix skip valid map entries on expire cleanup.
+  - remove unnecessary call to set_direct_mount_tree_catatonic().
+  - remove unnecessary assignment in umount_multi().
+  - fix direct mount trigger umount failure case.
+  - refactor do_umount_autofs_direct().
+  - fix stale direct mount trigger not umounted on expire.
+  - add function table_lookup_ino().
+  - improve handling of missing map entry for mount request.
+- Resolves: RHEL-97546
+
+* Fri Jan 30 2026 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.7
+- RHEL-46409 - RFE: autofs: add handling for AMD 'nounmount' option
+  - fix amd cache options not copied.
+  - seperate amd mount and entry flags.
+  - make iocl ops ->timeout() handle per-dentry expire.
+  - refactor amd mount options handling.
+  - add some unimplemented amd map options.
+  - fix lookup search type in umount_subtree_mounts().
+  - fix remount_active_mount() not remounting symlinks.
+  - log when setting amd per-mount timeout.
+  - update per-mount expire timeout on readmap.
+  - clear per-mount timeout if not set.
+  - fix incorrect flags update in update_with_defaults().
+  - skip expire check for amd nounmount mounts.
+- Resolves: RHEL-46409
+
 * Tue Nov 25 2025 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.6
 - RHEL-127179 - sssd autofs fails to get correct EHOSTDOWN if requested
   incorrect mount after upgrade to sssd-2.9.1-4.el8_9.5.x86_64

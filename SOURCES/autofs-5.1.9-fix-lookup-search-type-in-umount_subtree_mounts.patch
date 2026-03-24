@@ -1,0 +1,34 @@
+autofs-5.1.9 - fix lookup search type in umount_subtree_mounts()
+
+From: Ian Kent <raven@themaw.net>
+
+The lookup type used in umount_subtree_mounts() should be LKP_DISTINCT
+because we're looking for existing cache entries.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |    2 +-
+ 2 files changed, 2 insertions(+), 1 deletion(-)
+
+--- autofs-5.1.4.orig/CHANGELOG
++++ autofs-5.1.4/CHANGELOG
+@@ -172,6 +172,7 @@
+ - make iocl ops ->timeout() handle per-dentry expire.
+ - refactor amd mount options handling.
+ - add some unimplemented amd map options.
++- fix lookup search type in umount_subtree_mounts().
+ 
+ xx/xx/2018 autofs-5.1.5
+ - fix flag file permission.
+--- autofs-5.1.4.orig/daemon/automount.c
++++ autofs-5.1.4/daemon/automount.c
+@@ -544,7 +544,7 @@ static int umount_subtree_mounts(struct
+ 		if (ind_key)
+ 			ind_key++;
+ 
+-		me = lookup_source_mapent(ap, ind_key, LKP_NORMAL);
++		me = lookup_source_mapent(ap, ind_key, LKP_DISTINCT);
+ 	}
+ 
+ 	if (me) {
