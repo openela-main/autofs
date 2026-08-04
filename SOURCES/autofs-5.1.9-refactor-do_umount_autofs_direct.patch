@@ -1,0 +1,158 @@
+autofs-5.1.9 - refactor do_umount_autofs_direct()
+
+From: Ian Kent <raven@themaw.net>
+
+Refactor functon do_umount_autofs_direct() so that it can be called from
+do_expire_direct() to clean up stale direct mounts that couldn't be
+cleaned up at map re-load.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 
+ daemon/direct.c |  106 ++++++++++++++++++++++++++++++--------------------------
+ 2 files changed, 58 insertions(+), 49 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -193,6 +193,7 @@
+ - remove unnecessary call to set_direct_mount_tree_catatonic().
+ - remove unnecessary assignment in umount_multi().
+ - fix direct mount trigger umount failure case.
++- refactor do_umount_autofs_direct().
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/direct.c
++++ autofs-5.1.7/daemon/direct.c
+@@ -81,12 +81,66 @@ static void mnts_cleanup(void *arg)
+ 	mnts_put_expire_list(mnts);
+ }
+ 
++static int finish_umount(struct autofs_point *ap, struct mapent *me, int rv)
++{
++	char buf[MAX_ERR_BUF];
++
++	if (rv != 0) {
++		info(ap->logopt, "forcing umount of direct mount %s", me->key);
++		rv = umount2(me->key, MNT_DETACH);
++	} else
++		info(ap->logopt, "umounted direct mount %s", me->key);
++
++	if (!rv && me->flags & MOUNT_FLAG_DIR_CREATED) {
++		if  (rmdir(me->key) == -1) {
++			char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++			warn(ap->logopt, "failed to remove dir %s: %s",
++			     me->key, estr);
++		}
++	}
++	return rv;
++}
++
++static int do_umount_direct(struct autofs_point *ap, struct mapent *me)
++{
++	int rv, retries = UMOUNT_RETRIES;
++
++	while ((rv = umount(me->key)) == -1 && retries--) {
++		struct timespec tm = {0, 50000000};
++		if (errno != EBUSY)
++			break;
++		nanosleep(&tm, NULL);
++	}
++
++	if (rv == -1) {
++		switch (errno) {
++		case ENOENT:
++		case EINVAL:
++			warn(ap->logopt, "mount point %s does not exist",
++			      me->key);
++			return 0;
++		case EBUSY:
++			warn(ap->logopt, "mount point %s is in use", me->key);
++			if (ap->state == ST_SHUTDOWN_FORCE)
++				goto out;
++			else
++				return 0;
++		case ENOTDIR:
++			error(ap->logopt, "mount point is not a directory");
++			return 0;
++		}
++		return 1;
++	}
++out:
++	return finish_umount(ap, me, rv);
++}
++
+ int do_umount_autofs_direct(struct autofs_point *ap, struct mapent *me)
+ {
+ 	struct ioctl_ops *ops = get_ioctl_ops();
+ 	struct mapent_cache *mc = me->mc;
+ 	char buf[MAX_ERR_BUF];
+-	int ioctlfd = -1, rv, left, retries;
++	int ioctlfd = -1, rv, left;
+ 	char key[PATH_MAX + 1];
+ 	struct mapent *tmp;
+ 	int opened = 0;
+@@ -153,8 +207,7 @@ int do_umount_autofs_direct(struct autof
+ 			} else {
+ 				me->ioctlfd = -1;
+ 				ops->close(ap->logopt, ioctlfd);
+-				rv = -1;
+-				goto force_umount;
++				return finish_umount(ap, me, -1);
+ 			}
+ 		}
+ 		me->ioctlfd = -1;
+@@ -167,52 +220,7 @@ int do_umount_autofs_direct(struct autof
+ 
+ 	sched_yield();
+ 
+-	retries = UMOUNT_RETRIES;
+-	while ((rv = umount(me->key)) == -1 && retries--) {
+-		struct timespec tm = {0, 50000000};
+-		if (errno != EBUSY)
+-			break;
+-		nanosleep(&tm, NULL);
+-	}
+-
+-	if (rv == -1) {
+-		switch (errno) {
+-		case ENOENT:
+-		case EINVAL:
+-			warn(ap->logopt, "mount point %s does not exist",
+-			      me->key);
+-			return 0;
+-			break;
+-		case EBUSY:
+-			warn(ap->logopt, "mount point %s is in use", me->key);
+-			if (ap->state == ST_SHUTDOWN_FORCE)
+-				goto force_umount;
+-			else
+-				return 0;
+-			break;
+-		case ENOTDIR:
+-			error(ap->logopt, "mount point is not a directory");
+-			return 0;
+-			break;
+-		}
+-		return 1;
+-	}
+-
+-force_umount:
+-	if (rv != 0) {
+-		info(ap->logopt, "forcing umount of direct mount %s", me->key);
+-		rv = umount2(me->key, MNT_DETACH);
+-	} else
+-		info(ap->logopt, "umounted direct mount %s", me->key);
+-
+-	if (!rv && me->flags & MOUNT_FLAG_DIR_CREATED) {
+-		if  (rmdir(me->key) == -1) {
+-			char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
+-			warn(ap->logopt, "failed to remove dir %s: %s",
+-			     me->key, estr);
+-		}
+-	}
+-	return rv;
++	return do_umount_direct(ap, me);
+ }
+ 
+ int umount_autofs_direct(struct autofs_point *ap)

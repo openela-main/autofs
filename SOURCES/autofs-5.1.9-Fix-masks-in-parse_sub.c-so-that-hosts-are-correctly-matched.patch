@@ -1,0 +1,44 @@
+autofs-5.1.9 - Fix masks in parse_sub.c, so that hosts are correctly matched.
+
+From: Thiago Becker <tbecker@redhat.com>
+
+In the case local address is 10.x.x.x and one of the replica addresses
+is 138.x.x.x, MASK_A will make both equal, and get_priority will return
+PROXIMITY_NET, which is not correct.
+
+MASK_A = 0x7F000000 = 01111111 00000000 00000000 00000000
+LOCAL  = 10.x.x.x   = 00001010 00000000 00000000 00000000
+REMOTE = 138.x.x.x  = 10001010 00000000 00000000 00000000
+
+Signed-off-by: Thiago Becker <tbecker@redhat.com>
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG        |    1 +
+ lib/parse_subs.c |    6 +++---
+ 2 files changed, 4 insertions(+), 3 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -197,6 +197,7 @@
+ - fix stale direct mount trigger not umounted on expire.
+ - add function table_lookup_ino().
+ - improve handling of missing map entry for mount request.
++- Fix masks in parse_sub.c, so that hosts are correctly matched.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/lib/parse_subs.c
++++ autofs-5.1.7/lib/parse_subs.c
+@@ -37,9 +37,9 @@
+ static int volatile ifc_buf_len = MAX_IFC_BUF;
+ static int volatile ifc_last_len = 0;
+ 
+-#define MASK_A  0x7F000000
+-#define MASK_B  0xBFFF0000
+-#define MASK_C  0xDFFFFF00
++#define MASK_A  0xFF000000
++#define MASK_B  0xFFFF0000
++#define MASK_C  0xFFFFFF00
+ 
+ /* Get numeric value of the n bits starting at position p */
+ #define getbits(x, p, n)	((x >> (p + 1 - n)) & ~(~0 << n))

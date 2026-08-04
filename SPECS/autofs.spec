@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 65%{?dist}
+Release: 65%{?dist}.3
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
@@ -232,6 +232,22 @@ Patch211: autofs-5.1.9-fix-invalidated-map-entry-handling-in-hosts-module.patch
 #JIRA: RHEL-85615
 Patch212: autofs-5.1.8-always-recreate-credential-cache.patch
 Patch213: autofs-5.1.9-fix-always-recreate-credential-cache.patch
+
+# JIRA: RHEL-113623
+Patch214: autofs-5.1.9-quiet-possibly-noisy-log-message.patch
+Patch215: autofs-5.1.9-fix-devid-update-on-reload.patch
+Patch216: autofs-5.1.9-fix-cache-writelock-must-be-taken-in-update_map_cache.patch
+Patch217: autofs-5.1.9-fix-skip-valid-map-entries-on-expire-cleanup.patch
+Patch218: autofs-5.1.9-remove-unnecessary-call-to-set_direct_mount_tree_catatonic.patch
+Patch219: autofs-5.1.9-remove-unnecessary-assignment-in-umount_multi.patch
+Patch220: autofs-5.1.9-fix-direct-mount-trigger-umount-failure-case.patch
+Patch221: autofs-5.1.9-refactor-do_umount_autofs_direct.patch
+Patch222: autofs-5.1.9-fix-stale-direct-mount-trigger-not-umounted-on-expire.patch
+Patch223: autofs-5.1.9-add-function-table_lookup_ino.patch
+Patch224: autofs-5.1.9-improve-handling-of-missing-map-entry-for-mount-request.patch
+
+# JIRA: RHEL-158216
+Patch225: autofs-5.1.9-Fix-masks-in-parse_sub.c-so-that-hosts-are-correctly-matched.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -496,6 +512,20 @@ echo %{version}-%{release} > .version
 %patch -P 212 -p1
 %patch -P 213 -p1
 
+%patch -P 214 -p1
+%patch -P 215 -p1
+%patch -P 216 -p1
+%patch -P 217 -p1
+%patch -P 218 -p1
+%patch -P 219 -p1
+%patch -P 220 -p1
+%patch -P 221 -p1
+%patch -P 222 -p1
+%patch -P 223 -p1
+%patch -P 224 -p1
+
+%patch -P 225 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure \
@@ -603,6 +633,31 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Tue Mar 31 2026 Veronika Kabatova <vkabatov@redhat.com> - 1:5.1.7-65.el9_8.3
+- Rebuild to fix missing binaries due to buildsystem oversight
+
+* Mon Mar 23 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-65.el9_8.2
+- RHEL-158216 - get_proximity returns a worng proximity on specific
+  addresses [rhel-9.8.z]
+  - Fix masks in parse_sub.c, so that hosts are correctly matched.
+- Resolves: RHEL-158216
+
+* Wed Mar 18 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-65.el9_8.1
+- RHEL-154192 - Wrong oz_pgrp in autofs_sb_info causes automount to wait
+  on automount.
+  - quiet possibly noisy log message.
+  - fix devid update on reload.
+  - fix cache writelock must be taken in update_map_cache().
+  - fix skip valid map entries on expire cleanup.
+  - remove unnecessary call to set_direct_mount_tree_catatonic().
+  - remove unnecessary assignment in umount_multi().
+  - fix direct mount trigger umount failure case.
+  - refactor do_umount_autofs_direct().
+  - fix stale direct mount trigger not umounted on expire.
+  - add function table_lookup_ino().
+  - improve handling of missing map entry for mount request.
+- Resolves: RHEL-154192
+
 * Tue May 13 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-65
 - RHEL-85615 - autofs fails to mount shares when using kerberised LDAP
   - always recreate credential cache.

@@ -1,0 +1,48 @@
+autofs-5.1.9 - fix cache writelock must be taken in update_map_cache()
+
+From: Ian Kent <raven@themaw.net>
+
+In update_map_cache() the cache writelock must be taken because we need
+to clean up the map entry as it will be a problem later if we don't.
+
+It's possible that some other process has taken the lock temporarily but
+when this function is called the thread does not hold any cache locks so
+it should be ok to aquire it.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG          |    1 +
+ daemon/automount.c |   12 +++++-------
+ 2 files changed, 6 insertions(+), 7 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -188,6 +188,7 @@
+ - fix always recreate credential cache.
+ - quiet possibly noisy log message.
+ - fix devid update on reload.
++- fix cache writelock must be taken in update_map_cache().
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/automount.c
++++ autofs-5.1.7/daemon/automount.c
+@@ -511,13 +511,11 @@ static void update_map_cache(struct auto
+ 		}
+ 
+ 		mc = map->mc;
+-		/* If the lock is busy try later */
+-		if (cache_try_writelock(mc)) {
+-			me = cache_lookup_distinct(mc, key);
+-			if (me && me->ioctlfd == -1)
+-				cache_delete(mc, key);
+-			cache_unlock(mc);
+-		}
++		cache_writelock(mc);
++		me = cache_lookup_distinct(mc, key);
++		if (me && me->ioctlfd == -1)
++			cache_delete(mc, key);
++		cache_unlock(mc);
+ 
+ 		map = map->next;
+ 	}

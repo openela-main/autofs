@@ -1,0 +1,98 @@
+autofs-5.1.9 - improve handling of missing map entry for mount request
+
+From: Ian Kent <raven@themaw.net>
+
+If the map entry isn't found it must have been deleted from the map but
+a trigger mount is still mounted because it has sent us this request.
+Use the mount table for a brute force lookup to get the path and open a
+file handle for it so we can send a failure status to the kernel.
+
+Also remove the crit() log message following open_ioctlfd() as it already
+issues an appropriate error message on failure.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG       |    1 +
+ daemon/direct.c |   53 +++++++++++++++++++++++++++++++++++++++++++++++------
+ 2 files changed, 48 insertions(+), 6 deletions(-)
+
+--- autofs-5.1.7.orig/CHANGELOG
++++ autofs-5.1.7/CHANGELOG
+@@ -196,6 +196,7 @@
+ - refactor do_umount_autofs_direct().
+ - fix stale direct mount trigger not umounted on expire.
+ - add function table_lookup_ino().
++- improve handling of missing map entry for mount request.
+ 
+ 25/01/2021 autofs-5.1.7
+ - make bind mounts propagation slave by default.
+--- autofs-5.1.7.orig/daemon/direct.c
++++ autofs-5.1.7/daemon/direct.c
+@@ -1368,12 +1368,54 @@ int handle_packet_missing_direct(struct
+ 	}
+ 
+ 	if (!me) {
+-		/*
+-		 * Shouldn't happen as the kernel is telling us
+-		 * someone has walked on our mount point.
++		char tmp[PATH_MAX + 1];
++		char *path;
++
++		/* If the map entry wasn't found it must have been deleted
++		 * from the map but a trigger mount is still mounted because
++		 * it has sent us this request. So use the mount table for a
++		 * brute force lookup to get the path and open a file handle
++		 * for it so we can return a not found status to the kernel.
+ 		 */
+-		logerr("can't find map entry for (%lu,%lu)",
+-		    (unsigned long) pkt->dev, (unsigned long) pkt->ino);
++		path = table_lookup_ino(ap, pkt->dev, pkt->ino, tmp, PATH_MAX + 1, &ioctlfd);
++		if (!path) {
++			/* This could be cuased by an inability to open a file
++			 * handle but generally that doesn't happen. The mount
++			 * has to exist and be pinned becuase we got this request
++			 * so it can't be umounted. Therefore it's very unlikely
++			 * this case will happen. If it does happen it's fatal,
++			 * the waiter will hang and there's nothing we can do
++			 * about it.
++			 */
++			logerr("can't find mount for (%lu,%lu)",
++			    (unsigned long) pkt->dev, (unsigned long) pkt->ino);
++			/* TODO:  how do we clear wait q in kernel ?? */
++		} else {
++			char buf[MAX_ERR_BUF];
++
++			/* Try and recover from this unexpecyedly missing map
++			 * entry by detaching the direct mount trigger that
++			 * sent the request so it's no longer visible to the
++			 * VFS.
++			 */
++			info(ap->logopt, "forcing umount of direct mount %s", path);
++			if (umount2(path, MNT_DETACH) == -1) {
++				char *estr = strerror_r(errno, buf, MAX_ERR_BUF);
++				warn(ap->logopt, "failed to force umount %s: %s",
++				     path, estr);
++			}
++			if (rmdir(path) == -1) {
++				char buf[MAX_ERR_BUF];
++				char *estr;
++
++				estr = strerror_r(errno, buf, MAX_ERR_BUF);
++				warn(ap->logopt,
++				     "failed to remove dir %s: %s", path, estr);
++			}
++			ops->send_fail(ap->logopt,
++				       ioctlfd, pkt->wait_queue_token, -EINVAL);
++			ops->close(ap->logopt, ioctlfd);
++		}
+ 		master_source_unlock(ap->entry);
+ 		master_mutex_unlock();
+ 		pthread_setcancelstate(state, NULL);
+@@ -1392,7 +1434,6 @@ int handle_packet_missing_direct(struct
+ 		master_source_unlock(ap->entry);
+ 		master_mutex_unlock();
+ 		pthread_setcancelstate(state, NULL);
+-		crit(ap->logopt, "failed to create ioctl fd for %s", me->key);
+ 		/* TODO:  how do we clear wait q in kernel ?? */
+ 		return 1;
+ 	}
