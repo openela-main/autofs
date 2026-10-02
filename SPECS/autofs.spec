@@ -8,7 +8,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.4
-Release: 114%{?dist}.8
+Release: 114%{?dist}.9
 Epoch: 1
 License: GPLv2+
 Group: System Environment/Daemons
@@ -382,6 +382,9 @@ Patch377: autofs-5.1.9-refactor-do_umount_autofs_direct.patch
 Patch378: autofs-5.1.9-fix-stale-direct-mount-trigger-not-umounted-on-expire.patch
 Patch379: autofs-5.1.9-add-function-table_lookup_ino.patch
 Patch380: autofs-5.1.9-improve-handling-of-missing-map-entry-for-mount-request.patch
+
+# JIRA: RHEL-235959
+Patch390: autofs-5.1.9-Fix-masks-in-parse_sub.c-so-that-hosts-are-correctly-matched.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -801,6 +804,8 @@ echo %{version}-%{release} > .version
 %patch -P 379 -p1
 %patch -P 380 -p1
 
+%patch -P 390 -p1
+
 %build
 LDFLAGS=-Wl,-z,now
 %configure --disable-mount-locking --enable-ignore-busy --with-libtirpc --without-hesiod %{?systemd_configure_arg:}
@@ -895,6 +900,11 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Wed Aug 12 2026 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.9
+- RHEL-235959 - get_proximity returns a worng proximity on specific addresses [rhel-8.10.z]
+  - Fix masks in parse_sub.c, so that hosts are correctly matched.
+- Resolves: RHEL-235959
+
 * Fri Feb 27 2026 Ian Kent <ikent@redhat.com> - 5.1.4-114.el8_10.8
 - RHEL-97546 - hung tasks after autofs reload
   - quiet possibly noisy log message.
