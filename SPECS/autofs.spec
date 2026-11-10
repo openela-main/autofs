@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.7
-Release: 65%{?dist}.3
+Release: 68%{?dist}
 Epoch: 1
 License: GPLv2+
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}-2.tar.gz
@@ -246,8 +246,12 @@ Patch222: autofs-5.1.9-fix-stale-direct-mount-trigger-not-umounted-on-expire.pat
 Patch223: autofs-5.1.9-add-function-table_lookup_ino.patch
 Patch224: autofs-5.1.9-improve-handling-of-missing-map-entry-for-mount-request.patch
 
-# JIRA: RHEL-158216
-Patch225: autofs-5.1.9-Fix-masks-in-parse_sub.c-so-that-hosts-are-correctly-matched.patch
+# JIRA: RHEL-150237
+Patch225: autofs-5.1.9-fix-incorrect-flags-update-in-update_with_defaults.patch
+Patch226: autofs-5.1.9-skip-expire-check-for-amd-nounmount-mounts.patch
+
+# JIRA: RHEL-157745
+Patch227: autofs-5.1.9-Fix-masks-in-parse_sub.c-so-that-hosts-are-correctly-matched.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -525,6 +529,9 @@ echo %{version}-%{release} > .version
 %patch -P 224 -p1
 
 %patch -P 225 -p1
+%patch -P 226 -p1
+
+%patch -P 227 -p1
 
 %build
 LDFLAGS=-Wl,-z,now
@@ -633,17 +640,19 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
-* Tue Mar 31 2026 Veronika Kabatova <vkabatov@redhat.com> - 1:5.1.7-65.el9_8.3
-- Rebuild to fix missing binaries due to buildsystem oversight
-
-* Mon Mar 23 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-65.el9_8.2
-- RHEL-158216 - get_proximity returns a worng proximity on specific
-  addresses [rhel-9.8.z]
+* Fri Mar 20 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-68
+- RHEL-157745 - get_proximity returns a worng proximity on specific addresses
   - Fix masks in parse_sub.c, so that hosts are correctly matched.
-- Resolves: RHEL-158216
+- Resolves: RHEL-157745
 
-* Wed Mar 18 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-65.el9_8.1
-- RHEL-154192 - Wrong oz_pgrp in autofs_sb_info causes automount to wait
+* Wed Mar 09 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-67
+- RHEL-150237 - RFE: autofs: add handling for AMD 'nounmount' option [rhel-9]
+  - fix incorrect flags update in update_with_defaults().
+  - skip expire check for amd nounmount mounts.
+- Resolves: RHEL-150237
+
+* Wed Mar 04 2026 Ian Kent <ikent@redhat.com> - 1:5.1.7-66
+- RHEL-113623 - Wrong oz_pgrp in autofs_sb_info causes automount to wait
   on automount.
   - quiet possibly noisy log message.
   - fix devid update on reload.
@@ -656,7 +665,7 @@ fi
   - fix stale direct mount trigger not umounted on expire.
   - add function table_lookup_ino().
   - improve handling of missing map entry for mount request.
-- Resolves: RHEL-154192
+- Resolves: RHEL-113623
 
 * Tue May 13 2025 Ian Kent <ikent@redhat.com> - 1:5.1.7-65
 - RHEL-85615 - autofs fails to mount shares when using kerberised LDAP
