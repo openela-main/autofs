@@ -12,7 +12,7 @@
 Summary: A tool for automatically mounting and unmounting filesystems
 Name: autofs
 Version: 5.1.9
-Release: 13%{?dist}
+Release: 15%{?dist}
 Epoch: 1
 License: GPL-2.0-or-later
 Source: https://www.kernel.org/pub/linux/daemons/autofs/v5/autofs-%{version}.tar.gz
@@ -43,6 +43,18 @@ Patch22: autofs-5.1.9-fix-lock-ordering-deadlock-in-expire_cleanup.patch
 # RHEL-90571
 Patch30: autofs-5.1.9-fix-handling-of-ignored-offsets.patch
 Patch31: autofs-5.1.9-fix-invalidated-map-entry-handling-in-hosts-module.patch
+
+# RHEL-150239 amd option 'nounmount' (and related options) updates and fixes.
+Patch40: autofs-5.1.9-fix-lookup-search-type-in-umount_subtree_mounts.patch
+Patch41: autofs-5.1.9-fix-remount_active_mount-not-remounting-symlinks.patch
+Patch42: autofs-5.1.9-log-when-setting-amd-per-mount-timeout.patch
+Patch43: autofs-5.1.9-update-per-mount-expire-timeout-on-readmap.patch
+Patch44: autofs-5.1.7-clear-per-mount-timeout-if-not-set.patch
+Patch45: autofs-5.1.9-fix-incorrect-flags-update-in-update_with_defaults.patch
+Patch46: autofs-5.1.9-skip-expire-check-for-amd-nounmount-mounts.patch
+
+# JIRA: RHEL-160620
+Patch47: autofs-5.1.9-Fix-masks-in-parse_sub.c-so-that-hosts-are-correctly-matched.patch
 
 %if %{with_systemd}
 BuildRequires: systemd-units
@@ -215,6 +227,23 @@ fi
 %dir /etc/auto.master.d
 
 %changelog
+* Thu Mar 26 2026 Ian Kent <ikent@redhat.com> - 1:5.1.9-15
+- RHEL-160620 - get_proximity returns a worng proximity on specific addresses
+  [rhel-10]
+  - Fix masks in parse_sub.c, so that hosts are correctly matched.
+- Resolves: RHEL-160620
+
+* Tue Mar 17 2026 Ian Kent <ikent@redhat.com> - 1:5.1.9-14
+- RHEL-150238 - RFE: autofs: add handling for AMD 'nounmount' option [rhel-10]
+  - fix lookup search type in umount_subtree_mounts().
+  - fix remount_active_mount() not remounting symlinks.
+  - log when setting amd per-mount timeout.
+  - update per-mount expire timeout on readmap.
+  - clear per-mount timeout if not set.
+  - fix incorrect flags update in update_with_defaults().
+  - skip expire check for amd nounmount mounts.
+- Resolves: RHEL-150238
+
 * Mon May 12 2025 Ian Kent <ikent@redhat.com> - 1:5.1.9-13
 - RHEL-90571 - autofs: segfault while dereferencing null mapent [rhel-10]
   - fix handling of ignored offsets.

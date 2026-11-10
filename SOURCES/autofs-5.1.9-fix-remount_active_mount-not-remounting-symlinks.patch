@@ -1,0 +1,53 @@
+autofs-5.1.9 - fix remount_active_mount() not remounting symlinks
+
+From: Ian Kent <raven@themaw.net>
+
+In remount_active_mount() there's a check if the path has an active
+mount (ie. covered). This is meant to check if the mount is a direct
+mount with an active mount to decide if the file descriptor needs to
+be retained or not.
+
+But this check gets it worng if the path is an indirect mount that
+contains symlinks and causes them to not be properly expired after
+the re-mount.
+
+Signed-off-by: Ian Kent <raven@themaw.net>
+---
+ CHANGELOG    |    1 +
+ lib/mounts.c |   12 +++++-------
+ 2 files changed, 6 insertions(+), 7 deletions(-)
+
+--- autofs-5.1.9.orig/CHANGELOG
++++ autofs-5.1.9/CHANGELOG
+@@ -23,6 +23,7 @@
+ - fix handling of ignored offsets.
+ - fix invalidated map entry handling in hosts module.
+ - fix lookup search type in umount_subtree_mounts().
++- fix remount_active_mount() not remounting symlinks.
+ 
+ 02/11/2023 autofs-5.1.9
+ - fix kernel mount status notification.
+--- autofs-5.1.9.orig/lib/mounts.c
++++ autofs-5.1.9/lib/mounts.c
+@@ -2807,16 +2807,14 @@ static int remount_active_mount(struct a
+ 		ops->close(ap->logopt, fd);
+ 		return REMOUNT_FAIL;
+ 	}
+-	if (!mounted) {
++	if (!mounted && type != t_indirect) {
+ 		/*
+ 		 * If we're an indirect mount we pass back the fd.
+-		 * But if were a direct or offset mount with no active
+-		 * mount we don't retain an open file descriptor.
++		 * But if we're a direct or offset mount with no active
++		 * mount we don't retain the open file descriptor.
+ 		 */
+-		if (type != t_indirect) {
+-			ops->close(ap->logopt, fd);
+-			*ioctlfd = -1;
+-		}
++		ops->close(ap->logopt, fd);
++		*ioctlfd = -1;
+ 	} else {
+ 		/*
+ 		 * What can I do if we can't remount the existing
